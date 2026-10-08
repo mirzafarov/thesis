@@ -1,0 +1,217 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String              @id @default(uuid())
+  email             String              @unique
+  passwordHash      String
+  firstName         String
+  lastName          String
+  phone             String?
+  systemRole        SystemRole          @default(USER) // e.g., ADMIN, USER
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  projectMemberships ProjectMembership[]
+  meetingsOrganized  Meeting[]          @relation("MeetingOrganizer")
+  meetingParticipations MeetingParticipant[]
+  calendarAccounts   CalendarAccount[]
+  aiDrafts           AiDraft[]
+  pollVotes          PollVote[]
+  auditLogs          AuditLog[]
+}
+
+enum SystemRole {
+  ADMIN
+  USER
+}
+
+model Project {
+  id          String              @id @default(uuid())
+  name        String
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  members     ProjectMembership[]
+  activities  Activity[]
+  meetings    Meeting[]
+}
+
+model ProjectMembership {
+  id        String   @id @default(uuid())
+  userId    String
+  projectId String
+  role      ProjectRole @default(OBSERVER) // e.g., MANAGER, EMPLOYEE, OBSERVER
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+}
+
+enum ProjectRole {
+  MANAGER
+  EMPLOYEE
+  OBSERVER
+}
+
+model Activity {
+  id          String    @id @default(uuid())
+  projectId   String
+  title       String
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      ActivityStatus @default(PENDING)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  meetings    Meeting[]
+}
+
+enum ActivityStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  DELAYED
+}
+
+model Meeting {
+  id          String    @id @default(uuid())
+  projectId   String
+  activityId  String?
+  organizerId String
+  title       String
+  description String?
+  startDate   DateTime? // null if still in polling
+  endDate     DateTime?
+  durationMin Int
+  status      MeetingStatus @default(DRAFT)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activity    Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  organizer   User      @relation("MeetingOrganizer", fields: [organizerId], references: [id])
+  
+  participants MeetingParticipant[]
+  polls        MeetingPoll[]
+  aiDrafts     AiDraft[]
+}
+
+enum MeetingStatus {
+  DRAFT
+  AVAILABILITY_SEARCH
+  SLOT_SUGGESTED
+  POLL_CREATED
+  VOTING_IN_PROGRESS
+  CONFIRMED
+  CALENDAR_SYNCHRONIZED
+  IN_PROGRESS
+  COMPLETED
+  RESCHEDULED
+  CANCELLED
+}
+
+model MeetingParticipant {
+  id        String   @id @default(uuid())
+  meetingId String
+  userId    String
+  status    ParticipantStatus @default(INVITED)
+  
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+}
+
+enum ParticipantStatus {
+  INVITED
+  ACCEPTED
+  DECLINED
+  TENTATIVE
+}
+
+model CalendarAccount {
+  id           String   @id @default(uuid())
+  userId       String
+  provider     String   // "google" or "outlook"
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  email        String
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MeetingPoll {
+  id          String   @id @default(uuid())
+  meetingId   String
+  startTime   DateTime
+  endTime     DateTime
+  
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  votes       PollVote[]
+}
+
+model PollVote {
+  id          String   @id @default(uuid())
+  pollId      String
+  userId      String
+  vote        VoteType // YES, NO, IF_NECESSARY
+  
+  poll        MeetingPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+}
+
+enum VoteType {
+  YES
+  NO
+  IF_NECESSARY
+}
+
+model AiDraft {
+  id        String   @id @default(uuid())
+  meetingId String
+  userId    String
+  draftType DraftType // INVITATION, AGENDA, REMINDER, SUMMARY
+  content   String
+  createdAt DateTime @default(now())
+  
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum DraftType {
+  INVITATION
+  AGENDA
+  REMINDER
+  SUMMARY
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  ipAddress String?
+  details   String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+}
+

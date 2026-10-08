@@ -1,0 +1,215 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root, [data-theme="light"] {
+  --page-bg: #F8FAFC;
+  --text-primary: #0F172A;
+  --text-secondary: #64748B;
+  --surface: #FFFFFF;
+  --border: #E2E8F0;
+  --primary: #2563EB;
+  --success: #16A34A;
+  --warning: #D97706;
+  --danger: #DC2626;
+  --danger-light: #FEF2F2;
+
+  --sidebar-bg: #0F172A;
+  --sidebar-border: #1E293B;
+  --sidebar-text: #94A3B8;
+  --sidebar-active-bg: #2563EB;
+}
+
+[data-theme="dark"] {
+  --page-bg: #111827;
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --surface: #1F2937;
+  --border: #374151;
+  --primary: #3B82F6;
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --danger-light: rgba(239, 68, 68, 0.1);
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--page-bg) !important;
+  color: var(--text-primary) !important;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Sidebar styles (static theme) */
+.saas-sidebar {
+  background-color: var(--sidebar-bg) !important;
+  border-right: 1px solid var(--sidebar-border) !important;
+}
+
+.saas-sidebar .nav-link {
+  color: var(--sidebar-text) !important;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.saas-sidebar .nav-link:hover {
+  color: #FFFFFF !important;
+  background-color: rgba(255,255,255,0.05) !important;
+}
+
+.saas-sidebar .nav-link.active {
+  background-color: var(--sidebar-active-bg) !important;
+  color: #FFFFFF !important;
+}
+
+/* Main content styles (dynamic theme) */
+.card, .saas-card {
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+  border-radius: 8px !important;
+  color: var(--text-primary) !important;
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+.card-header, .card-footer {
+  background-color: transparent !important;
+  border-bottom-color: var(--border) !important;
+  border-top-color: var(--border) !important;
+}
+
+.text-muted {
+  color: var(--text-secondary) !important;
+}
+
+h1, h2, h3, h4, h5, h6, .saas-heading {
+  color: var(--text-primary) !important;
+  font-weight: 600;
+}
+
+.btn-primary {
+  background-color: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #FFFFFF !important;
+}
+
+.btn-outline-primary, .saas-btn-outline-primary {
+  border: 1px solid var(--primary) !important;
+  color: var(--primary) !important;
+  background-color: transparent !important;
+}
+.btn-outline-primary:hover, .saas-btn-outline-primary:hover {
+  background-color: var(--primary) !important;
+  color: #FFFFFF !important;
+}
+
+.btn-outline-danger, .saas-btn-outline-danger {
+  border: 1px solid var(--danger) !important;
+  color: var(--danger) !important;
+  background-color: transparent !important;
+}
+.btn-outline-danger:hover, .saas-btn-outline-danger:hover {
+  background-color: var(--danger-light) !important;
+}
+
+.table, .list-group-item {
+  background-color: var(--surface) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+}
+
+.modal-content {
+  background-color: var(--surface) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.modal-header, .modal-footer {
+  border-color: var(--border) !important;
+}
+
+.form-control, .form-select {
+  background-color: var(--page-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+}
+.form-control:focus, .form-select:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 0.25rem rgba(37, 99, 235, 0.25) !important;
+}
+
+.bg-light {
+  background-color: var(--page-bg) !important;
+}
+.bg-white {
+  background-color: var(--surface) !important;
+}
+
+
+.text-dark, .text-body {
+  color: var(--text-primary) !important;
+}
+
+.border, .border-bottom, .border-top, .border-start, .border-end {
+  border-color: var(--border) !important;
+}
+
+/* React Phone Number Input Theme Overrides */
+.PhoneInput {
+  display: flex;
+  align-items: center;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+.PhoneInput:focus-within {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+.PhoneInputInput {
+  flex: 1;
+  min-width: 0;
+  background-color: transparent;
+  border: none;
+  color: var(--text-primary);
+  outline: none;
+}
+.PhoneInputInput::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+.PhoneInputCountry {
+  margin-right: 0.75rem;
+}
+.PhoneInputCountrySelect {
+  background-color: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.PhoneInputCountryIcon {
+  width: 24px;
+  height: 16px;
+  box-shadow: none;
+}
+.PhoneInputCountryIconImg {
+  width: 100%;
+  height: 100%;
+}
+
+
+
+/* Global Placeholder Styling */
+::placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+
+
+
+/* Dark Theme Global Close Button Fix */
+[data-theme="dark"] .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
