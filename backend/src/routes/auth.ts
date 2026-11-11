@@ -5,10 +5,16 @@ import { body, validationResult } from 'express-validator';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { prisma } from '../lib/prisma';
-import { JWT_SECRET, FRONTEND_URL } from '../lib/config';
+import { JWT_SECRET, FRONTEND_URL, PRIVACY_POLICY_VERSION, SESSION_IDLE_MINUTES } from '../lib/config';
 import { sendEmail } from '../lib/mailer';
 import { emails } from '../lib/emails';
 import { createUserToken, consumeUserToken } from '../lib/tokens';
+import { audit, clientIp } from '../lib/audit';
+import { startSession, isTwoFactorRequired, activeSessionFilter, revokeAllSessions } from '../lib/sessions';
+import {
+  createPendingSecret, verifyPendingCode, verifyLoginCode,
+  generateRecoveryCodes, useRecoveryCode, remainingRecoveryCodes,
+} from '../lib/totp';
 import { authenticate } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 
@@ -16,6 +22,7 @@ const router = express.Router();
 
 const RESET_MINUTES = 30;
 const VERIFY_MINUTES = 24 * 60;
+const MFA_CHALLENGE_MINUTES = 5;
 
 // Brute-force protection: lock out after 5 failed attempts for 15 minutes
 const loginLimiter = rateLimit({
@@ -23,6 +30,16 @@ const loginLimiter = rateLimit({
   max: 5, // 5 failed attempts per IP per window
   skipSuccessfulRequests: true, // only failed logins count towards the limit
   message: { error: 'Too many failed login attempts. Your account has been temporarily locked for 15 minutes to prevent brute-force attacks.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Same protection for the 6-digit code step (a code has only 1,000,000 possibilities).
+const codeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  skipSuccessfulRequests: true,
+  message: { error: 'Too many wrong codes. Please wait 15 minutes and try again.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -43,8 +60,6 @@ const strongPassword = (field: string) =>
   body(field)
     .isStrongPassword({ minLength: 8, minLowercase: 1, minUppercase: 1, minNumbers: 1, minSymbols: 1 })
     .withMessage('Password must be at least 8 characters long and contain an uppercase letter, a lowercase letter, a number, and a special character.');
-
-const clientIp = (req: express.Request) => req.ip || req.socket.remoteAddress || 'unknown';
 
 /**
  * How many times this password appears in known data breaches (HaveIBeenPwned, k-anonymity:
@@ -73,7 +88,20 @@ async function sendVerificationEmail(user: { id: string; email: string; firstNam
   await sendEmail(emails.verifyEmail(user, `${FRONTEND_URL}/verify-email?token=${token}`));
 }
 
-// Register
+const publicUser = (
+  user: { id: string; email: string; firstName: string; lastName: string; systemRole: string },
+  mfaSetupRequired = false,
+) => ({
+  id: user.id,
+  email: user.email,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  role: user.systemRole,
+  mfaSetupRequired,
+});
+
+// ---------- Registration and email confirmation ----------
+
 router.post('/register', [
   body('email').isEmail().withMessage('Must be a valid email'),
   strongPassword('password'),
@@ -99,8 +127,14 @@ router.post('/register', [
 
     const passwordHash = await bcrypt.hash(password, await bcrypt.genSalt(10));
     const newUser = await prisma.user.create({
-      data: { email, passwordHash, firstName, lastName, phone },
+      data: {
+        email, passwordHash, firstName, lastName, phone,
+        // GDPR: record when, and to which version of the rules, the user consented.
+        consentAt: new Date(),
+        consentVersion: PRIVACY_POLICY_VERSION,
+      },
     });
+    await audit(req, { userId: newUser.id, action: 'REGISTER', details: `Account created; consented to privacy policy v${PRIVACY_POLICY_VERSION}.` });
 
     // The account can be used once the email address is confirmed.
     await sendVerificationEmail(newUser);
@@ -115,7 +149,6 @@ router.post('/register', [
   }
 });
 
-// Confirm email address (link from the confirmation email)
 router.post('/verify-email', async (req, res) => {
   try {
     const userId = await consumeUserToken(req.body.token, 'EMAIL_VERIFICATION');
@@ -123,9 +156,7 @@ router.post('/verify-email', async (req, res) => {
       return res.status(400).json({ error: 'This confirmation link is invalid or has expired. Request a new one from the login page.' });
     }
     await prisma.user.update({ where: { id: userId }, data: { emailVerifiedAt: new Date() } });
-    await prisma.auditLog.create({
-      data: { userId, action: 'EMAIL_VERIFIED', ipAddress: clientIp(req), details: 'User confirmed their email address.' },
-    });
+    await audit(req, { userId, action: 'EMAIL_VERIFIED', details: 'User confirmed their email address.' });
     res.json({ message: 'Your email address is confirmed. You can now log in.' });
   } catch (error) {
     console.error('Email verification error:', error);
@@ -133,7 +164,7 @@ router.post('/verify-email', async (req, res) => {
   }
 });
 
-// Send the confirmation email again. Always answers the same way, so it does not reveal which emails exist.
+// Always answers the same way, so it does not reveal which emails exist.
 router.post('/resend-verification', emailLimiter, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { email: String(req.body.email || '') } });
@@ -145,16 +176,15 @@ router.post('/resend-verification', emailLimiter, async (req, res) => {
   }
 });
 
-// Forgot password: email a one-time reset link. Always answers the same way (no account enumeration).
+// ---------- Password reset ----------
+
 router.post('/forgot-password', emailLimiter, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { email: String(req.body.email || '') } });
     if (user) {
       const token = await createUserToken(user.id, 'PASSWORD_RESET', RESET_MINUTES);
       await sendEmail(emails.passwordReset(user, `${FRONTEND_URL}/reset-password?token=${token}`, RESET_MINUTES));
-      await prisma.auditLog.create({
-        data: { userId: user.id, action: 'PASSWORD_RESET_REQUESTED', ipAddress: clientIp(req), details: 'A password reset link was emailed.' },
-      });
+      await audit(req, { userId: user.id, action: 'PASSWORD_RESET_REQUESTED', details: 'A password reset link was emailed.' });
     }
     res.json({ message: `If an account exists for that email, we sent a link to reset the password. It is valid for ${RESET_MINUTES} minutes.` });
   } catch (error) {
@@ -163,7 +193,6 @@ router.post('/forgot-password', emailLimiter, async (req, res) => {
   }
 });
 
-// Reset password with the one-time token from the email
 router.post('/reset-password', [strongPassword('password')], async (req: any, res: any) => {
   try {
     const errors = validationResult(req);
@@ -184,12 +213,11 @@ router.post('/reset-password', [strongPassword('password')], async (req: any, re
       where: { id: userId },
       data: { passwordHash, emailVerifiedAt: new Date() },
     });
+    // Anyone who was logged in with the old password is logged out everywhere.
+    await revokeAllSessions(userId);
 
-    const now = new Date();
-    await prisma.auditLog.create({
-      data: { userId, action: 'PASSWORD_RESET', ipAddress: clientIp(req), details: 'Password was changed with a reset link.' },
-    });
-    await sendEmail(emails.passwordChanged(user, now, clientIp(req)));
+    await audit(req, { userId, action: 'PASSWORD_RESET', details: 'Password was changed with a reset link; all sessions were ended.' });
+    await sendEmail(emails.passwordChanged(user, new Date(), clientIp(req)));
 
     res.json({ message: 'Your password has been changed. You can now log in.' });
   } catch (error) {
@@ -198,18 +226,15 @@ router.post('/reset-password', [strongPassword('password')], async (req: any, re
   }
 });
 
-// Login
+// ---------- Login (step 1: password, step 2: two-factor code) ----------
+
 router.post('/login', loginLimiter, async (req: any, res: any) => {
   try {
     const { email, password } = req.body;
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.passwordHash);
-    if (!isMatch) {
+    const user = await prisma.user.findUnique({ where: { email: String(email || '') } });
+    if (!user || !(await bcrypt.compare(String(password || ''), user.passwordHash))) {
+      if (user) await audit(req, { userId: user.id, action: 'LOGIN_FAILED', details: 'Wrong password.' });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -221,43 +246,211 @@ router.post('/login', loginLimiter, async (req: any, res: any) => {
       });
     }
 
-    const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.systemRole },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    // Audit Log for successful login
-    try {
-      await prisma.auditLog.create({
-        data: {
-          userId: user.id,
-          action: 'LOGIN',
-          ipAddress: clientIp(req),
-          details: 'User successfully logged into the system.'
-        }
-      });
-    } catch (err) {
-      console.error('Audit log failed', err);
+    if (user.totpEnabledAt) {
+      // Password is right; now ask for the code. This short-lived token only works for the next step.
+      const mfaToken = jwt.sign({ userId: user.id, purpose: 'mfa-login' }, JWT_SECRET, { expiresIn: `${MFA_CHALLENGE_MINUTES}m` });
+      return res.json({ mfaRequired: true, mfaToken });
     }
 
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.systemRole
-      }
+    const mfaSetupRequired = await isTwoFactorRequired(user.id, user.systemRole);
+    const { token } = await startSession(req, user, mfaSetupRequired);
+    await audit(req, {
+      userId: user.id,
+      action: 'LOGIN',
+      details: mfaSetupRequired
+        ? 'Logged in with password; must set up two-factor authentication before continuing.'
+        : 'User successfully logged into the system.',
     });
+
+    res.json({ token, user: publicUser(user, mfaSetupRequired) });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Export User Data (GDPR)
+router.post('/login/2fa', codeLimiter, async (req: any, res: any) => {
+  try {
+    let userId: string;
+    try {
+      const payload = jwt.verify(String(req.body.mfaToken || ''), JWT_SECRET) as { userId: string; purpose: string };
+      if (payload.purpose !== 'mfa-login') throw new Error('wrong purpose');
+      userId = payload.userId;
+    } catch {
+      return res.status(401).json({ error: 'The login step expired. Please enter your email and password again.', code: 'MFA_EXPIRED' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.totpEnabledAt) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const code = String(req.body.code || '').trim();
+    let method = 'authenticator app';
+    let ok = /^\d{6}$/.test(code.replace(/\s/g, '')) && (await verifyLoginCode(user, code));
+    if (!ok && code.replace(/[^A-Za-z0-9]/g, '').length === 10) {
+      ok = await useRecoveryCode(user.id, code);
+      method = 'recovery code';
+    }
+    if (!ok) {
+      await audit(req, { userId: user.id, action: 'LOGIN_2FA_FAILED', details: 'Wrong two-factor code.' });
+      return res.status(401).json({ error: 'That code is not correct, or it was already used. Please try the newest code.' });
+    }
+
+    const { token } = await startSession(req, user, false);
+    const left = method === 'recovery code' ? await remainingRecoveryCodes(user.id) : null;
+    await audit(req, {
+      userId: user.id,
+      action: 'LOGIN',
+      details: `Logged in with password and ${method}${left !== null ? ` (${left} recovery codes left)` : ''}.`,
+    });
+
+    res.json({ token, user: publicUser(user), recoveryCodesLeft: left });
+  } catch (error) {
+    console.error('2FA login error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------- Current user, logout, sessions ----------
+
+router.get('/me', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({
+      ...publicUser(user, req.user.mfaSetupRequired),
+      phone: user.phone,
+      consentAt: user.consentAt,
+      consentVersion: user.consentVersion,
+      twoFactorEnabled: !!user.totpEnabledAt,
+      twoFactorRequired: await isTwoFactorRequired(user.id, user.systemRole),
+      recoveryCodesLeft: user.totpEnabledAt ? await remainingRecoveryCodes(user.id) : 0,
+      sessionIdleMinutes: SESSION_IDLE_MINUTES,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/logout', authenticate, async (req: AuthRequest, res) => {
+  await prisma.session.update({ where: { id: req.user.sid }, data: { revokedAt: new Date() } });
+  await audit(req, { userId: req.user.userId, action: 'LOGOUT', details: 'User logged out.' });
+  res.json({ success: true });
+});
+
+router.get('/sessions', authenticate, async (req: AuthRequest, res) => {
+  const sessions = await prisma.session.findMany({
+    where: activeSessionFilter(req.user.userId),
+    orderBy: { lastSeenAt: 'desc' },
+    select: { id: true, ipAddress: true, userAgent: true, createdAt: true, lastSeenAt: true },
+  });
+  res.json(sessions.map(s => ({ ...s, current: s.id === req.user.sid })));
+});
+
+// End one of your own sessions (e.g. a forgotten login on another computer).
+router.delete('/sessions/:id', authenticate, async (req: AuthRequest, res) => {
+  const result = await prisma.session.updateMany({
+    where: { id: req.params.id!, userId: req.user.userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (result.count === 0) return res.status(404).json({ error: 'Session not found' });
+  await audit(req, { userId: req.user.userId, action: 'SESSION_REVOKED', details: `Ended session ${req.params.id}.` });
+  res.json({ success: true });
+});
+
+router.post('/sessions/revoke-others', authenticate, async (req: AuthRequest, res) => {
+  await revokeAllSessions(req.user.userId, req.user.sid);
+  await audit(req, { userId: req.user.userId, action: 'SESSION_REVOKED', details: 'Ended all other sessions.' });
+  res.json({ success: true });
+});
+
+// Your own audit trail: logins, security changes and actions you performed.
+router.get('/me/activity', authenticate, async (req: AuthRequest, res) => {
+  const logs = await prisma.auditLog.findMany({
+    where: { userId: req.user.userId },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    select: { id: true, action: true, details: true, ipAddress: true, createdAt: true },
+  });
+  res.json(logs);
+});
+
+// ---------- Two-factor setup ----------
+
+// Step 1: create a secret and return the QR code to scan with an authenticator app.
+router.post('/2fa/setup', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.totpEnabledAt) return res.status(400).json({ error: 'Two-factor authentication is already enabled.' });
+    const { secret, qrDataUrl } = await createPendingSecret(user.id, user.email);
+    res.json({ qrDataUrl, secret });
+  } catch (error) {
+    console.error('2FA setup error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Step 2: confirm with the first code from the app; returns the recovery codes (shown once).
+router.post('/2fa/enable', authenticate, codeLimiter, async (req: AuthRequest, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.totpEnabledAt) return res.status(400).json({ error: 'Two-factor authentication is already enabled.' });
+
+    const step = verifyPendingCode(user.totpPendingSecret, String(req.body.code || '').replace(/\s/g, ''));
+    if (step === null) {
+      return res.status(400).json({ error: 'That code is not correct. Make sure your phone shows the right time and try the newest code.' });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { totpSecret: user.totpPendingSecret, totpPendingSecret: null, totpEnabledAt: new Date(), totpLastStep: step },
+    });
+    const recoveryCodes = await generateRecoveryCodes(user.id);
+    // This session no longer needs to set up 2FA.
+    await prisma.session.update({ where: { id: req.user.sid }, data: { mfaSetupRequired: false } });
+    await audit(req, { userId: user.id, action: '2FA_ENABLED', details: 'Two-factor authentication was enabled.' });
+
+    res.json({ success: true, recoveryCodes });
+  } catch (error) {
+    console.error('2FA enable error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// New recovery codes (the old ones stop working). Requires a current code.
+router.post('/2fa/recovery-codes', authenticate, codeLimiter, async (req: AuthRequest, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+  if (!user?.totpEnabledAt) return res.status(400).json({ error: 'Two-factor authentication is not enabled.' });
+  if (!(await verifyLoginCode(user, String(req.body.code || '')))) {
+    return res.status(400).json({ error: 'That code is not correct, or it was already used.' });
+  }
+  const recoveryCodes = await generateRecoveryCodes(user.id);
+  await audit(req, { userId: user.id, action: '2FA_RECOVERY_CODES_RENEWED', details: 'New recovery codes were generated.' });
+  res.json({ recoveryCodes });
+});
+
+// Turn 2FA off (only where the role does not require it). Requires the password and a current code.
+router.post('/2fa/disable', authenticate, codeLimiter, async (req: AuthRequest, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+  if (!user?.totpEnabledAt) return res.status(400).json({ error: 'Two-factor authentication is not enabled.' });
+  if (await isTwoFactorRequired(user.id, user.systemRole)) {
+    return res.status(403).json({ error: 'Your role (administrator or project manager) requires two-factor authentication, so it cannot be turned off.' });
+  }
+  if (!(await bcrypt.compare(String(req.body.password || ''), user.passwordHash)) || !(await verifyLoginCode(user, String(req.body.code || '')))) {
+    return res.status(400).json({ error: 'The password or the code is not correct.' });
+  }
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: user.id }, data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null, totpLastStep: null } }),
+    prisma.recoveryCode.deleteMany({ where: { userId: user.id } }),
+  ]);
+  await audit(req, { userId: user.id, action: '2FA_DISABLED', details: 'Two-factor authentication was turned off.' });
+  res.json({ success: true });
+});
+
+// ---------- GDPR ----------
+
 router.get('/me/export', authenticate, async (req: AuthRequest, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -270,6 +463,9 @@ router.get('/me/export', authenticate, async (req: AuthRequest, res) => {
         lastName: true,
         phone: true,
         systemRole: true,
+        consentAt: true,
+        consentVersion: true,
+        totpEnabledAt: true,
         createdAt: true,
         updatedAt: true,
         projectMemberships: { include: { project: true } },
@@ -277,12 +473,14 @@ router.get('/me/export', authenticate, async (req: AuthRequest, res) => {
         meetingParticipations: true,
         pollVotes: true,
         aiDrafts: true,
-        // Never export the password hash or the (encrypted) calendar tokens.
+        // Never export the password hash, 2FA secret, recovery codes or (encrypted) calendar tokens.
         calendarAccounts: { select: { provider: true, email: true } },
+        sessions: { select: { ipAddress: true, userAgent: true, createdAt: true, lastSeenAt: true, revokedAt: true } },
         auditLogs: { select: { action: true, ipAddress: true, details: true, createdAt: true } },
         notifications: { select: { type: true, sentAt: true } },
       }
     });
+    await audit(req, { userId: req.user.userId, action: 'DATA_EXPORTED', details: 'User downloaded their personal data (GDPR).' });
     res.json(user);
   } catch (error) {
     console.error(error);
@@ -290,7 +488,6 @@ router.get('/me/export', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-// Delete User Account (GDPR Right to be Forgotten)
 router.delete('/me', authenticate, async (req: AuthRequest, res) => {
   try {
     const userId = req.user.userId;

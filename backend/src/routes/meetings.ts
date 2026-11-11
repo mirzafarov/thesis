@@ -6,6 +6,7 @@ import { getGoogleClientForUser } from '../lib/google';
 import { notifyMeetingConfirmed, notifyMeetingInvitation, notifyMeetingRescheduled } from '../lib/notifications';
 import { authenticate, isProjectMember } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
+import { audit } from '../lib/audit';
 
 const router = express.Router();
 
@@ -79,6 +80,7 @@ router.post('/poll', authenticate, async (req: AuthRequest, res) => {
       include: { polls: true },
     });
 
+    await audit(req, { userId, projectId, action: 'MEETING_POLL_CREATED', details: `Created poll "${title}" with ${proposedSlots.length} time(s); invitations sent to ${invited.size - 1} participant(s).` });
     notifyMeetingInvitation(meeting.id);
     res.status(201).json(meeting);
   } catch (error) {
@@ -204,6 +206,7 @@ router.post('/:meetingId/finalize', authenticate, async (req: AuthRequest, res) 
       await prisma.meeting.update({ where: { id: meetingId }, data: { status: 'CALENDAR_SYNCHRONIZED' } });
     }
 
+    await audit(req, { userId: req.user.userId, projectId: meeting.projectId, action: 'MEETING_CONFIRMED', details: `Confirmed "${meeting.title}" for ${finalStart.toISOString()}.` });
     notifyMeetingConfirmed(meetingId);
     res.json({ ...meeting, calendarSynced: synced });
   } catch (error) {
@@ -242,6 +245,7 @@ router.put('/:meetingId/reschedule', authenticate, async (req: AuthRequest, res)
         status: 'RESCHEDULED',
       },
     });
+    await audit(req, { userId, projectId: meeting.projectId, action: 'MEETING_RESCHEDULED', details: `Moved "${meeting.title}" from ${meeting.startDate?.toISOString() ?? 'no time'} to ${newStart.toISOString()}.` });
     notifyMeetingRescheduled(meetingId, meeting.startDate);
     res.json(updated);
   } catch (error) {

@@ -18,6 +18,12 @@ model User {
   lastName          String
   phone             String?
   emailVerifiedAt   DateTime?           // set when the user clicks the link in the confirmation email
+  consentAt         DateTime?           // when the user accepted the privacy policy / GDPR rules
+  consentVersion    String?             // which version of the rules they accepted
+  totpSecret        String?             // two-factor secret (encrypted); set once 2FA is enabled
+  totpPendingSecret String?             // secret shown during setup, before the first code is confirmed
+  totpEnabledAt     DateTime?
+  totpLastStep      Int?                // last accepted 30-second step, so a code cannot be reused
   systemRole        SystemRole          @default(USER) // e.g., ADMIN, USER
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
@@ -32,6 +38,38 @@ model User {
   responsibleFor     Activity[]          @relation("ActivityResponsible")
   tokens             UserToken[]
   notifications      NotificationLog[]
+  sessions           Session[]
+  recoveryCodes      RecoveryCode[]
+}
+
+// A logged-in device. Every login token points to a session, so a session can be ended remotely
+// and expires after a period of inactivity.
+model Session {
+  id         String    @id @default(uuid())
+  userId     String
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  mfaSetupRequired Boolean @default(false) // logged in without 2FA although the role requires it
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// One-time backup codes for two-factor login (only hashes are stored).
+model RecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // One-time links sent by email (password reset, email confirmation).
@@ -265,6 +303,7 @@ enum DraftType {
 model AuditLog {
   id        String   @id @default(uuid())
   userId    String?
+  projectId String?  // set for actions inside a project (project audit trail)
   action    String
   ipAddress String?
   details   String?

@@ -297,6 +297,15 @@ const ProjectDetails = () => {
     }
   };
 
+  const changeRole = async (memberUserId: string, role: Member['role']) => {
+    try {
+      await axios.put(`/api/projects/${id}/members/${memberUserId}`, { role });
+      fetchProject();
+    } catch (err) {
+      setPageError(apiError(err, 'Failed to change role'));
+    }
+  };
+
   const removeMember = async (memberUserId: string) => {
     try {
       await axios.delete(`/api/projects/${id}/members/${memberUserId}`);
@@ -351,6 +360,8 @@ const ProjectDetails = () => {
       });
 
       doc.save(`${project.name.replace(/\s+/g, '_')}_Report.pdf`);
+      // Report generation is a critical action: record it in the audit log.
+      axios.post(`/api/projects/${id}/report-log`, { format: 'PDF' }).catch(() => {});
     });
   };
 
@@ -488,10 +499,23 @@ const ProjectDetails = () => {
                       <small className="text-muted text-uppercase" style={{ fontSize: '0.7rem' }}>{member.role} • {member.user.email}</small>
                     </div>
                   </div>
-                  {isManager && member.role !== 'MANAGER' && (
-                    <Button variant="light" size="sm" className="text-danger border-0" aria-label={`Remove ${memberName(member)}`} onClick={() => removeMember(member.user.id)}>
-                      <i className="bi bi-trash" aria-hidden="true"></i>
-                    </Button>
+                  {isManager && member.userId !== user?.id && (
+                    <div className="d-flex align-items-center gap-1">
+                      <Form.Select
+                        size="sm"
+                        aria-label={`Role of ${memberName(member)}`}
+                        value={member.role}
+                        onChange={e => changeRole(member.userId, e.target.value as Member['role'])}
+                        style={{ width: 130 }}
+                      >
+                        <option value="MANAGER">Manager</option>
+                        <option value="EMPLOYEE">Employee</option>
+                        <option value="OBSERVER">Observer</option>
+                      </Form.Select>
+                      <Button variant="light" size="sm" className="text-danger border-0" aria-label={`Remove ${memberName(member)}`} onClick={() => removeMember(member.user.id)}>
+                        <i className="bi bi-trash" aria-hidden="true"></i>
+                      </Button>
+                    </div>
                   )}
                 </ListGroup.Item>
               ))}

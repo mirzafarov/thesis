@@ -11,6 +11,7 @@ import AdminLogs from './pages/AdminLogs';
 import UserManagement from './pages/UserManagement';
 import OAuthSuccess from './pages/OAuthSuccess';
 import { ForgotPassword, ResetPassword, VerifyEmail } from './pages/AuthPages';
+import SetupTwoFactor from './pages/SetupTwoFactor';
 import { AuthContext, AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useEffect, useContext } from 'react';
@@ -38,7 +39,8 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
-          
+          <Route path="/setup-2fa" element={<ProtectedRoute><SetupTwoFactor /></ProtectedRoute>} />
+
           {/* Protected Routes wrapped in Layout */}
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

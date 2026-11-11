@@ -23,5 +23,13 @@ export const SMTP = {
   pass: process.env.SMTP_PASS || '',
   from: process.env.MAIL_FROM || 'Safe Zone <no-reply@safezone.local>',
 };
+// Sessions end after this much inactivity, and in any case after SESSION_MAX_HOURS.
+export const SESSION_IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES || 30);
+export const SESSION_MAX_HOURS = Number(process.env.SESSION_MAX_HOURS || 24);
+// Two-factor login is mandatory for administrators and project managers (set to "false" to make it optional).
+export const REQUIRE_2FA_FOR_MANAGERS = process.env.REQUIRE_2FA_FOR_MANAGERS !== 'false';
+// Version of the privacy policy / GDPR rules users accept at sign-up; stored with their consent.
+export const PRIVACY_POLICY_VERSION = process.env.PRIVACY_POLICY_VERSION || '1.0';
+
 // Time zone used for dates in emails (users' own time zones are not stored yet).
 export const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Europe/Vilnius';

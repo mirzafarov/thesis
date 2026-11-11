@@ -2,8 +2,11 @@ import express from 'express';
 import { prisma } from '../lib/prisma';
 import { authenticate, getMembership, isProjectManager } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
+import { audit } from '../lib/audit';
 
 const router = express.Router();
+
+const day = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : 'none');
 
 const PROJECT_ROLES = ['MANAGER', 'EMPLOYEE', 'OBSERVER'] as const;
 const ACTIVITY_STATUSES = ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'DELAYED'] as const;
@@ -91,6 +94,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
         members: { create: { userId: req.user.userId, role: 'MANAGER' } },
       },
     });
+    await audit(req, { userId: req.user.userId, projectId: project.id, action: 'PROJECT_CREATED', details: `Created project "${project.name}".` });
     res.status(201).json(project);
   } catch (error) {
     handleError(res, error, 'Failed to create project');
@@ -143,6 +147,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
       where: { id: projectId },
       data: { name, description, startDate, endDate },
     });
+    await audit(req, { userId: req.user.userId, projectId, action: 'PROJECT_UPDATED', details: `Updated project details (${day(project.startDate)} – ${day(project.endDate)}).` });
     res.json(project);
   } catch (error) {
     handleError(res, error, 'Failed to update project');
@@ -156,7 +161,8 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
     if (!(await isProjectManager(req.user.userId, projectId))) {
       return res.status(403).json({ error: 'Only managers can delete a project' });
     }
-    await prisma.project.delete({ where: { id: projectId } });
+    const deleted = await prisma.project.delete({ where: { id: projectId } });
+    await audit(req, { userId: req.user.userId, projectId, action: 'PROJECT_DELETED', details: `Deleted project "${deleted.name}".` });
     res.json({ success: true });
   } catch (error) {
     handleError(res, error, 'Failed to delete project');
@@ -182,6 +188,7 @@ router.post('/:id/phases', authenticate, async (req: AuthRequest, res) => {
     const phase = await prisma.phase.create({
       data: { projectId, name, startDate, endDate, isMilestone: !!isMilestone },
     });
+    await audit(req, { userId: req.user.userId, projectId, action: 'PHASE_CREATED', details: `Added ${phase.isMilestone ? 'milestone' : 'phase'} "${phase.name}" (${day(phase.startDate)} – ${day(phase.endDate)}).` });
     res.status(201).json(phase);
   } catch (error) {
     handleError(res, error, 'Failed to create phase');
@@ -206,6 +213,10 @@ router.put('/:projectId/phases/:phaseId', authenticate, async (req: AuthRequest,
       where: { id: phaseId },
       data: { name: req.body.name ?? existing.name, startDate, endDate, isMilestone: !!isMilestone },
     });
+    await audit(req, {
+      userId: req.user.userId, projectId, action: 'PHASE_UPDATED',
+      details: `Changed "${phase.name}": ${day(existing.startDate)} – ${day(existing.endDate)} → ${day(phase.startDate)} – ${day(phase.endDate)}.`,
+    });
     res.json(phase);
   } catch (error) {
     handleError(res, error, 'Failed to update phase');
@@ -221,6 +232,7 @@ router.delete('/:projectId/phases/:phaseId', authenticate, async (req: AuthReque
     }
     const result = await prisma.phase.deleteMany({ where: { id: phaseId, projectId } });
     if (result.count === 0) return res.status(404).json({ error: 'Phase not found' });
+    await audit(req, { userId: req.user.userId, projectId, action: 'PHASE_DELETED', details: `Deleted phase ${phaseId}.` });
     res.json({ success: true });
   } catch (error) {
     handleError(res, error, 'Failed to delete phase');
@@ -256,6 +268,7 @@ router.post('/:id/activities', authenticate, async (req: AuthRequest, res) => {
         endDate: endDate ?? null,
       },
     });
+    await audit(req, { userId: req.user.userId, projectId, action: 'ACTIVITY_CREATED', details: `Added activity "${activity.title}" (${day(activity.startDate)} – ${day(activity.endDate)}).` });
     res.status(201).json(activity);
   } catch (error) {
     handleError(res, error, 'Failed to create activity');
@@ -324,6 +337,20 @@ router.put('/:projectId/activities/:activityId', authenticate, async (req: AuthR
       }));
     }
 
+    // Plan changes: describe what changed.
+    const changes: string[] = [];
+    if (existing.status !== activity.status) changes.push(`status ${existing.status} → ${activity.status}`);
+    if (day(existing.startDate) !== day(activity.startDate) || day(existing.endDate) !== day(activity.endDate)) {
+      changes.push(`dates ${day(existing.startDate)} – ${day(existing.endDate)} → ${day(activity.startDate)} – ${day(activity.endDate)}`);
+    }
+    if (existing.responsibleId !== activity.responsibleId) changes.push('responsible person changed');
+    if (existing.phaseId !== activity.phaseId) changes.push('moved to another phase');
+    if (existing.isCritical !== activity.isCritical) changes.push(activity.isCritical ? 'marked critical' : 'no longer critical');
+    if (existing.title !== activity.title) changes.push(`renamed from "${existing.title}"`);
+    if (changes.length > 0) {
+      await audit(req, { userId: req.user.userId, projectId, action: 'ACTIVITY_UPDATED', details: `"${activity.title}": ${changes.join('; ')}.` });
+    }
+
     res.json({ activity, meetingSuggestions, shiftDays: existing.startDate && startDate ? Math.round((startDate.getTime() - existing.startDate.getTime()) / DAY_MS) : 0 });
   } catch (error) {
     handleError(res, error, 'Failed to update activity');
@@ -339,6 +366,7 @@ router.delete('/:projectId/activities/:activityId', authenticate, async (req: Au
     }
     const result = await prisma.activity.deleteMany({ where: { id: activityId, projectId } });
     if (result.count === 0) return res.status(404).json({ error: 'Activity not found' });
+    await audit(req, { userId: req.user.userId, projectId, action: 'ACTIVITY_DELETED', details: `Deleted activity ${activityId}.` });
 
     res.json({ success: true });
   } catch (error) {
@@ -360,7 +388,9 @@ router.post('/:id/members', authenticate, async (req: AuthRequest, res) => {
 
     const newMember = await prisma.projectMembership.create({
       data: { userId: newMemberUserId, projectId, role },
+      include: { user: { select: { email: true } } },
     });
+    await audit(req, { userId: req.user.userId, projectId, action: 'MEMBER_ADDED', details: `Added ${newMember.user.email} as ${role}.` });
     res.status(201).json(newMember);
   } catch (error: any) {
     if (error.code === 'P2002') {
@@ -377,13 +407,64 @@ router.delete('/:projectId/members/:userIdToRemove', authenticate, async (req: A
     if (!(await isProjectManager(req.user.userId, projectId))) {
       return res.status(403).json({ error: 'Only managers can remove members' });
     }
-    await prisma.projectMembership.delete({
+    const member = await prisma.projectMembership.findUnique({
       where: { userId_projectId: { userId: userIdToRemove, projectId } },
+      include: { user: { select: { email: true } } },
     });
+    if (!member) return res.status(404).json({ error: 'Member not found' });
+    if (member.role === 'MANAGER' && (await managerCount(projectId)) <= 1) {
+      throw new BadRequest('A project needs at least one manager. Make someone else a manager first.');
+    }
+    await prisma.projectMembership.delete({ where: { id: member.id } });
+    await audit(req, { userId: req.user.userId, projectId, action: 'MEMBER_REMOVED', details: `Removed ${member.user.email} (${member.role}).` });
     res.json({ success: true });
   } catch (error) {
     handleError(res, error, 'Failed to remove member');
   }
+});
+
+const managerCount = (projectId: string) => prisma.projectMembership.count({ where: { projectId, role: 'MANAGER' } });
+
+// Change a member's role (managers only). Every change is recorded with who made it.
+router.put('/:projectId/members/:memberUserId', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { projectId, memberUserId } = req.params as { projectId: string; memberUserId: string };
+    if (!(await isProjectManager(req.user.userId, projectId))) {
+      return res.status(403).json({ error: 'Only managers can change roles' });
+    }
+    const { role } = req.body;
+    if (!PROJECT_ROLES.includes(role)) throw new BadRequest('Invalid project role');
+
+    const member = await prisma.projectMembership.findUnique({
+      where: { userId_projectId: { userId: memberUserId, projectId } },
+      include: { user: { select: { email: true } } },
+    });
+    if (!member) return res.status(404).json({ error: 'Member not found' });
+    if (member.role === role) return res.json(member);
+    if (member.role === 'MANAGER' && (await managerCount(projectId)) <= 1) {
+      throw new BadRequest('A project needs at least one manager. Make someone else a manager first.');
+    }
+
+    const updated = await prisma.projectMembership.update({ where: { id: member.id }, data: { role } });
+    await audit(req, {
+      userId: req.user.userId, projectId, action: 'MEMBER_ROLE_CHANGED',
+      details: `${member.user.email}: ${member.role} → ${role}.${role === 'MANAGER' ? ' Two-factor login is required from their next login.' : ''}`,
+    });
+    res.json(updated);
+  } catch (error) {
+    handleError(res, error, 'Failed to change role');
+  }
+});
+
+// Reports are generated in the browser; this records that one was generated (who, when, which project).
+router.post('/:id/report-log', authenticate, async (req: AuthRequest, res) => {
+  const projectId = req.params.id!;
+  if (!(await getMembership(req.user.userId, projectId))) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  const format = String(req.body.format || 'PDF').slice(0, 10);
+  await audit(req, { userId: req.user.userId, projectId, action: 'REPORT_EXPORTED', details: `Generated a ${format} project report.` });
+  res.json({ success: true });
 });
 
 export default router;
