@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import 'react-phone-number-input/style.css';
 import PhoneInput from 'react-phone-number-input';
+import { browserTimeZone } from '../lib/time';
 
 const Register = () => {
   const [firstName, setFirstName] = useState('');
@@ -56,7 +57,7 @@ const Register = () => {
     setLoading(true);
     try {
       const res = await axios.post('/api/auth/register', {
-        firstName, lastName, email, phone, password, gdprConsent
+        firstName, lastName, email, phone, password, gdprConsent, timeZone: browserTimeZone()
       });
       setSuccess(res.data.message);
     } catch (err: any) {

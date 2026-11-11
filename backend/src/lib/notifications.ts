@@ -6,7 +6,7 @@ const SCHEDULED = ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'] as const
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
-const person = { select: { id: true, email: true, firstName: true, lastName: true } } as const;
+const person = { select: { id: true, email: true, firstName: true, lastName: true, timeZone: true } } as const;
 const fullName = (u: { firstName: string; lastName: string }) => `${u.firstName} ${u.lastName}`;
 
 /** Record that a notification was sent. Returns false if it had already been sent (so it is skipped). */

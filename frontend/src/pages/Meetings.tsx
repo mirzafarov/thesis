@@ -1,22 +1,50 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Button, Card, Col, Container, Row, Modal, Form, Badge, ToggleButton, ToggleButtonGroup } from 'react-bootstrap';
+import { Button, Card, Col, Container, Row, Modal, Form, Badge, ToggleButton, ToggleButtonGroup, Alert, ListGroup } from 'react-bootstrap';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import ReactMarkdown from 'react-markdown';
+import SlotFinder from '../components/meetings/SlotFinder';
+import { browserTimeZone, formatInZone, otherZonesLine, zoneCity } from '../lib/time';
 
-// Convert a UTC ISO string to the "YYYY-MM-DDTHH:mm" local-time format a datetime-local input expects.
-const toLocalInputValue = (iso: string) => {
-  const d = new Date(iso);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+const MAX_SLOTS = 5;
+const isScheduled = (m: any) => ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'].includes(m.status);
+const STATUS_LABEL: Record<string, string> = {
+  DRAFT: 'Voting',
+  CONFIRMED: 'Confirmed',
+  CALENDAR_SYNCHRONIZED: 'Confirmed · in calendar',
+  RESCHEDULED: 'Moved',
 };
 
-const isScheduled = (m: any) => ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'].includes(m.status);
+/** "Thu 12 Nov, 15:00" plus "08:00 New York · 22:00 Tokyo" for the other people's zones (night times highlighted). */
+const TimeWithZones = ({ iso, zones, strong = false }: { iso: string; zones: (string | null | undefined)[]; strong?: boolean }) => {
+  const others = otherZonesLine(iso, zones);
+  return (
+    <span>
+      <span className={strong ? 'fw-semibold' : ''}>{formatInZone(iso, browserTimeZone())}</span>
+      {others.length > 0 && (
+        <span className="small d-block" style={{ color: 'var(--text-secondary)' }}>
+          {others.map((o, i) => (
+            <span key={o.zone}>
+              {i > 0 && ' · '}
+              <span className={o.night ? 'text-danger fw-semibold' : ''} title={o.night ? 'Outside normal hours for this person' : undefined}>
+                {o.night && <i className="bi bi-moon-stars me-1" aria-label="night time"></i>}{o.text}
+              </span>
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+};
+
+const emptyForm = { projectId: '', activityId: '', title: '', description: '', durationMin: 30 };
 
 const Meetings = () => {
   const [meetings, setMeetings] = useState<any[]>([]);
   const [pendingPolls, setPendingPolls] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [notice, setNotice] = useState<{ variant: string; text: string } | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
@@ -24,7 +52,7 @@ const Meetings = () => {
   const [selectedMeetingToFinalize, setSelectedMeetingToFinalize] = useState<any>(null);
   const [finalSlot, setFinalSlot] = useState('');
   const [votes, setVotes] = useState<Record<string, string>>({});
-  
+
   // AI State
   const [showAIModal, setShowAIModal] = useState(false);
   const [selectedMeetingId, setSelectedMeetingId] = useState('');
@@ -32,21 +60,15 @@ const Meetings = () => {
   const [draftType, setDraftType] = useState('AGENDA');
   const [generatedDraft, setGeneratedDraft] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  
+
   const { user } = useContext(AuthContext);
   const location = useLocation();
 
-  // Form states
-  const [formData, setFormData] = useState({
-    projectId: '',
-    activityId: '',
-    title: '',
-    description: '',
-    durationMin: 30,
-    slot1: '',
-    slot2: '',
-    slot3: ''
-  });
+  // Schedule form
+  const [formData, setFormData] = useState(emptyForm);
+  const [slots, setSlots] = useState<string[]>([]); // ISO start times
+  const [manualSlot, setManualSlot] = useState('');
+  const [formError, setFormError] = useState('');
 
   const fetchData = async () => {
     try {
@@ -67,77 +89,57 @@ const Meetings = () => {
     fetchData();
   }, []);
 
+  const openSchedule = (prefill: Partial<typeof emptyForm> = {}) => {
+    setFormData({ ...emptyForm, ...prefill });
+    setSlots([]);
+    setManualSlot('');
+    setFormError('');
+    setShowScheduleModal(true);
+  };
+
   useEffect(() => {
     if (location.state && location.state.openScheduleModal) {
-      setFormData(prev => ({
-        ...prev,
+      openSchedule({
         projectId: location.state.projectId || '',
         activityId: location.state.activityId || '',
         title: location.state.activityTitle ? `Meeting for: ${location.state.activityTitle}` : ''
-      }));
-      setShowScheduleModal(true);
-      
+      });
       // Clear state so a refresh doesn't pop it up again
       window.history.replaceState({}, document.title);
     }
   }, [location]);
 
+  const project = projects.find(p => p.id === formData.projectId);
+  const members: any[] = project?.members || [];
+  const memberZones = members.map(m => m.user?.timeZone);
+
+  const toggleSlot = (iso: string) =>
+    setSlots(prev => (prev.includes(iso) ? prev.filter(s => s !== iso) : [...prev, iso].sort()));
+
+  const addManualSlot = () => {
+    if (!manualSlot) return;
+    const iso = new Date(manualSlot).toISOString(); // datetime-local is in this browser's time zone
+    if (new Date(iso) <= new Date()) return setFormError('That time is in the past.');
+    if (!slots.includes(iso) && slots.length < MAX_SLOTS) toggleSlot(iso);
+    setManualSlot('');
+    setFormError('');
+  };
+
   const handleCreatePoll = async (e: React.FormEvent) => {
     e.preventDefault();
-    // datetime-local values are in the browser's time zone; send exact UTC instants to the server.
-    const proposedSlots = [formData.slot1, formData.slot2, formData.slot3]
-      .filter(s => s)
-      .map(s => new Date(s).toISOString());
-
-    const project = projects.find(p => p.id === formData.projectId);
-    const participantIds = project ? project.members.map((m: any) => m.userId) : [];
-
+    if (slots.length === 0) return setFormError('Add at least one proposed time.');
     try {
       await axios.post('/api/meetings/poll', {
         ...formData,
-        proposedSlots,
-        participantIds
+        proposedSlots: slots,
+        participantIds: members.map((m: any) => m.userId),
       });
       setShowScheduleModal(false);
+      setNotice({ variant: 'success', text: `Poll sent to ${Math.max(members.length - 1, 0)} participant(s). The meeting is confirmed automatically when a majority votes "Yes" for a time.` });
       fetchData();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setFormError(err.response?.data?.error || 'Could not create the poll.');
     }
-  };
-
-  const [isSuggesting, setIsSuggesting] = useState(false);
-  const handleAutoSuggest = async () => {
-    if (!formData.projectId) return alert("Please select a project first to get the team members!");
-    const project = projects.find(p => p.id === formData.projectId);
-    const participantIds = project ? project.members.map((m: any) => m.userId) : [];
-    
-    const startDate = new Date();
-    const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
-    
-    setIsSuggesting(true);
-    try {
-      const res = await axios.post('/api/calendar/suggest', {
-        participantIds,
-        durationMin: formData.durationMin,
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString()
-      });
-      
-      const slots: string[] = res.data.slots;
-      if (slots.length === 0) {
-        alert('No free slots found in the next 7 days.');
-      }
-      setFormData({
-        ...formData,
-        slot1: slots[0] ? toLocalInputValue(slots[0]) : '',
-        slot2: slots[1] ? toLocalInputValue(slots[1]) : '',
-        slot3: slots[2] ? toLocalInputValue(slots[2]) : ''
-      });
-    } catch (err) {
-      console.error('Failed to auto suggest', err);
-      alert('Could not auto-suggest. Have team members connected their Google Calendars?');
-    }
-    setIsSuggesting(false);
   };
 
   const handleOpenVote = (poll: any) => {
@@ -147,17 +149,16 @@ const Meetings = () => {
   };
 
   const handleSubmitVote = async () => {
-    const voteArray = Object.keys(votes).map(slot => ({
-      selectedSlot: slot,
-      availability: votes[slot]
-    }));
-
+    const voteArray = Object.keys(votes).map(slot => ({ selectedSlot: slot, availability: votes[slot] }));
     try {
-      await axios.post(`/api/meetings/poll/${selectedPoll.id}/vote`, { votes: voteArray });
+      const res = await axios.post(`/api/meetings/poll/${selectedPoll.id}/vote`, { votes: voteArray });
       setShowVoteModal(false);
+      setNotice(res.data.autoConfirmed
+        ? { variant: 'success', text: `A majority agreed: "${selectedPoll.meeting.title}" is confirmed for ${formatInZone(res.data.autoConfirmed.startDate, browserTimeZone())} and added to connected calendars.` }
+        : { variant: 'info', text: 'Your votes were saved.' });
       fetchData();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setNotice({ variant: 'danger', text: err.response?.data?.error || 'Could not save your votes.' });
     }
   };
 
@@ -173,8 +174,8 @@ const Meetings = () => {
       await axios.post(`/api/meetings/${selectedMeetingToFinalize.id}/finalize`, { finalStartDate: finalSlot });
       setShowFinalizeModal(false);
       fetchData();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setNotice({ variant: 'danger', text: err.response?.data?.error || 'Could not confirm the meeting.' });
     }
   };
 
@@ -183,11 +184,7 @@ const Meetings = () => {
     setIsGenerating(true);
     setGeneratedDraft('');
     try {
-      const res = await axios.post('/api/ai/generate', {
-        meetingId: selectedMeetingId,
-        draftType,
-        prompt: aiPrompt
-      });
+      const res = await axios.post('/api/ai/generate', { meetingId: selectedMeetingId, draftType, prompt: aiPrompt });
       setGeneratedDraft(res.data.content);
     } catch (err: any) {
       setGeneratedDraft(err.response?.data?.error || 'Failed to generate content');
@@ -203,45 +200,58 @@ const Meetings = () => {
     setShowAIModal(true);
   };
 
+  const zonesOf = (meeting: any) => (meeting.participants || []).map((p: any) => p.user?.timeZone);
+
   return (
     <Container fluid>
-      <div className="d-flex justify-content-between align-items-center mb-4">
+      <div className="d-flex justify-content-between align-items-center mb-2">
         <h2>Meetings & Polls</h2>
-        <Button variant="primary" onClick={() => setShowScheduleModal(true)} className="shadow-sm">
-          <i className="bi bi-calendar-plus me-2"></i>Schedule Meeting
+        <Button variant="primary" onClick={() => openSchedule()} className="shadow-sm">
+          <i className="bi bi-calendar-plus me-2" aria-hidden="true"></i>Schedule Meeting
         </Button>
       </div>
+      <p className="small mb-4" style={{ color: 'var(--text-secondary)' }}>
+        Times are shown in your time zone ({zoneCity(browserTimeZone())}); times for colleagues in other zones are listed underneath.
+      </p>
+
+      {notice && <Alert variant={notice.variant} dismissible onClose={() => setNotice(null)}>{notice.text}</Alert>}
 
       <Row>
-        <Col md={8}>
+        <Col lg={8}>
           <h5 className="mb-3 text-secondary">Your Meetings</h5>
           {meetings.length === 0 ? (
-            <Card className="bg-light border-0 shadow-sm"><Card.Body className="text-center text-muted p-5">No meetings found. Schedule one to get started!</Card.Body></Card>
+            <Card className="border-0 shadow-sm"><Card.Body className="text-center text-muted p-5">No meetings found. Schedule one to get started!</Card.Body></Card>
           ) : (
             meetings.map(meeting => (
               <Card key={meeting.id} className="mb-3 border-0 shadow-sm custom-hover-card">
-                <Card.Body className="d-flex justify-content-between align-items-center">
+                <Card.Body className="d-flex flex-wrap gap-2 justify-content-between align-items-center">
                   <div>
                     <Card.Title className="mb-1">{meeting.title}</Card.Title>
-                    <Card.Subtitle className="mb-2 text-primary small"><i className="bi bi-folder2-open me-1"></i>{meeting.project.name}</Card.Subtitle>
-                    <Card.Text className="text-muted mb-0">
-                      <i className="bi bi-clock me-1"></i>
-                      {meeting.startDate ? new Date(meeting.startDate).toLocaleString() : 'Time pending (Poll active)'} • {meeting.durationMin} mins
-                    </Card.Text>
+                    <Card.Subtitle className="mb-2 text-primary small"><i className="bi bi-folder2-open me-1" aria-hidden="true"></i>{meeting.project.name}</Card.Subtitle>
+                    <div className="text-muted mb-0">
+                      <i className="bi bi-clock me-1" aria-hidden="true"></i>
+                      {meeting.startDate ? <TimeWithZones iso={meeting.startDate} zones={zonesOf(meeting)} /> : 'Time not decided yet (poll open)'}
+                      <span className="small"> · {meeting.durationMin} min</span>
+                    </div>
+                    {meeting.status === 'DRAFT' && meeting.poll && (
+                      <div className="small mt-1" style={{ color: 'var(--text-secondary)' }}>
+                        {meeting.poll.voted} of {meeting.participants.length} voted · confirmed automatically at {meeting.poll.majority} "Yes" votes for one time
+                      </div>
+                    )}
                   </div>
                   <div className="text-end">
-                    <Badge bg={isScheduled(meeting) ? 'success' : 'warning'} className="mb-2 px-3 py-2 rounded-pill">
-                      {meeting.status === 'CALENDAR_SYNCHRONIZED' ? 'CONFIRMED · IN CALENDAR' : meeting.status}
+                    <Badge bg={isScheduled(meeting) ? 'success' : 'warning'} text={isScheduled(meeting) ? undefined : 'dark'} className="mb-2 px-3 py-2 rounded-pill">
+                      {STATUS_LABEL[meeting.status] || meeting.status}
                     </Badge>
                     <div className="d-flex gap-2 justify-content-end">
                       {isScheduled(meeting) && (
                         <Button variant="outline-primary" size="sm" onClick={() => openAIModal(meeting.id)}>
-                          <i className="bi bi-magic me-1"></i> AI Assistant
+                          <i className="bi bi-magic me-1" aria-hidden="true"></i> AI Assistant
                         </Button>
                       )}
                       {meeting.status === 'DRAFT' && meeting.organizerId === user?.id && meeting.poll && (
                         <Button variant="success" size="sm" onClick={() => handleOpenFinalize(meeting)}>
-                          <i className="bi bi-check-circle me-1"></i> Finalize Time
+                          <i className="bi bi-check-circle me-1" aria-hidden="true"></i> Choose time
                         </Button>
                       )}
                     </div>
@@ -252,18 +262,18 @@ const Meetings = () => {
           )}
         </Col>
 
-        <Col md={4}>
+        <Col lg={4}>
           <h5 className="mb-3 text-secondary">Action Required</h5>
           {pendingPolls.length === 0 ? (
-            <Card className="bg-light border-0 shadow-sm"><Card.Body className="text-center text-muted p-4">You're all caught up!</Card.Body></Card>
+            <Card className="border-0 shadow-sm"><Card.Body className="text-center text-muted p-4">You're all caught up!</Card.Body></Card>
           ) : (
             pendingPolls.map(poll => (
               <Card key={poll.id} className="mb-3 border-0 border-start border-warning border-4 shadow-sm custom-hover-card">
                 <Card.Body>
                   <h6 className="fw-bold">{poll.meeting.title}</h6>
-                  <small className="text-primary d-block mb-3"><i className="bi bi-folder2-open me-1"></i>{poll.meeting.project.name}</small>
+                  <small className="text-primary d-block mb-3"><i className="bi bi-folder2-open me-1" aria-hidden="true"></i>{poll.meeting.project.name}</small>
                   <Button variant="warning" size="sm" className="w-100 text-dark fw-semibold" onClick={() => handleOpenVote(poll)}>
-                    <i className="bi bi-ui-radios me-1"></i> Vote on Proposed Times
+                    <i className="bi bi-ui-radios me-1" aria-hidden="true"></i> Vote on Proposed Times
                   </Button>
                 </Card.Body>
               </Card>
@@ -274,28 +284,29 @@ const Meetings = () => {
 
       {/* AI Assistant Modal */}
       <Modal show={showAIModal} onHide={() => setShowAIModal(false)} size="lg" centered>
-        <Modal.Header closeButton className="bg-light border-0 pb-3">
-          <Modal.Title className="fw-bold"><i className="bi bi-magic text-primary me-2"></i>Gemini AI Assistant</Modal.Title>
+        <Modal.Header closeButton className="border-0 pb-3">
+          <Modal.Title className="fw-bold"><i className="bi bi-magic text-primary me-2" aria-hidden="true"></i>Gemini AI Assistant</Modal.Title>
         </Modal.Header>
         <Modal.Body className="pt-4">
           <Form onSubmit={handleGenerateAI}>
             <Row>
               <Col md={4}>
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-3" controlId="ai-type">
                   <Form.Label className="fw-semibold text-muted small text-uppercase">Draft Type</Form.Label>
                   <Form.Select value={draftType} onChange={e => setDraftType(e.target.value)} className="shadow-none">
                     <option value="AGENDA">Meeting Agenda</option>
                     <option value="INVITATION">Email Invitation</option>
+                    <option value="REMINDER">Reminder</option>
                     <option value="SUMMARY">Meeting Summary</option>
                   </Form.Select>
                 </Form.Group>
               </Col>
               <Col md={8}>
-                <Form.Group className="mb-3">
+                <Form.Group className="mb-3" controlId="ai-prompt">
                   <Form.Label className="fw-semibold text-muted small text-uppercase">Instructions / Context</Form.Label>
-                  <Form.Control 
-                    as="textarea" 
-                    rows={3} 
+                  <Form.Control
+                    as="textarea"
+                    rows={3}
                     className="shadow-none"
                     placeholder="e.g. Include a bullet point about the new marketing budget..."
                     value={aiPrompt}
@@ -307,15 +318,15 @@ const Meetings = () => {
             </Row>
             <div className="text-end">
               <Button variant="primary" type="submit" disabled={isGenerating} className="px-4 shadow-sm rounded-pill">
-                {isGenerating ? <><span className="spinner-border spinner-border-sm me-2"></span>Generating...</> : <><i className="bi bi-stars me-1"></i>Generate</>}
+                {isGenerating ? <><span className="spinner-border spinner-border-sm me-2"></span>Generating...</> : <><i className="bi bi-stars me-1" aria-hidden="true"></i>Generate</>}
               </Button>
             </div>
           </Form>
 
           {generatedDraft && (
-            <div className="mt-4 p-4 bg-white rounded shadow-sm border">
+            <div className="mt-4 p-4 rounded shadow-sm border">
               <h6 className="text-primary fw-bold mb-3 border-bottom pb-2">Generated {draftType}</h6>
-              <div className="markdown-body text-dark" style={{fontSize: '0.95rem'}}>
+              <div className="markdown-body" style={{ fontSize: '0.95rem' }}>
                 <ReactMarkdown>{generatedDraft}</ReactMarkdown>
               </div>
             </div>
@@ -323,31 +334,35 @@ const Meetings = () => {
         </Modal.Body>
       </Modal>
 
-      {/* Finalize Meeting Modal */}
+      {/* Choose final time (organizer) */}
       {selectedMeetingToFinalize && (
         <Modal show={showFinalizeModal} onHide={() => setShowFinalizeModal(false)} centered>
-          <Modal.Header closeButton className="bg-light border-0">
-            <Modal.Title className="fw-bold">Finalize Meeting Time</Modal.Title>
+          <Modal.Header closeButton className="border-0">
+            <Modal.Title className="fw-bold">Choose the meeting time</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <p className="text-muted">Select the winning time slot to officially lock in <strong>{selectedMeetingToFinalize.title}</strong>.</p>
-            <Form.Group>
-              {selectedMeetingToFinalize.poll.options.map((slot: string, idx: number) => (
-                <div key={idx} className="mb-2 p-3 bg-light rounded border d-flex justify-content-between align-items-center cursor-pointer" onClick={() => setFinalSlot(slot)} style={{cursor: 'pointer'}}>
-                  <Form.Check 
-                    type="radio" 
-                    id={`finalize-${idx}`} 
-                    name="finalizeSlot" 
-                    label={new Date(slot).toLocaleString()} 
-                    checked={finalSlot === slot}
-                    onChange={() => setFinalSlot(slot)}
-                    className="fw-semibold"
-                  />
-                </div>
-              ))}
-            </Form.Group>
+            <p className="text-muted small">
+              Votes so far for <strong>{selectedMeetingToFinalize.title}</strong> ({selectedMeetingToFinalize.poll.voted} of {selectedMeetingToFinalize.participants.length} people voted).
+            </p>
+            {selectedMeetingToFinalize.poll.tallies.map((t: any, idx: number) => (
+              <div key={t.start} className="mb-2 p-3 rounded border d-flex justify-content-between align-items-center" onClick={() => setFinalSlot(t.start)} style={{ cursor: 'pointer' }}>
+                <Form.Check
+                  type="radio"
+                  id={`finalize-${idx}`}
+                  name="finalizeSlot"
+                  label={<TimeWithZones iso={t.start} zones={zonesOf(selectedMeetingToFinalize)} strong />}
+                  checked={finalSlot === t.start}
+                  onChange={() => setFinalSlot(t.start)}
+                />
+                <span className="small text-nowrap ms-2">
+                  <Badge bg="success" className="me-1">{t.yes} yes</Badge>
+                  <Badge bg="warning" text="dark" className="me-1">{t.ifNecessary} if needed</Badge>
+                  <Badge bg="danger">{t.no} no</Badge>
+                </span>
+              </div>
+            ))}
           </Modal.Body>
-          <Modal.Footer className="border-0 bg-light">
+          <Modal.Footer className="border-0">
             <Button variant="secondary" onClick={() => setShowFinalizeModal(false)} className="rounded-pill px-4">Cancel</Button>
             <Button variant="success" onClick={handleFinalize} disabled={!finalSlot} className="rounded-pill px-4 shadow-sm">Confirm Meeting</Button>
           </Modal.Footer>
@@ -355,61 +370,84 @@ const Meetings = () => {
       )}
 
       {/* Schedule Meeting Modal */}
-      <Modal show={showScheduleModal} onHide={() => setShowScheduleModal(false)} centered>
+      <Modal show={showScheduleModal} onHide={() => setShowScheduleModal(false)} centered size="lg">
         <Form onSubmit={handleCreatePoll}>
-          <Modal.Header closeButton className="bg-light border-0">
+          <Modal.Header closeButton className="border-0">
             <Modal.Title className="fw-bold">Schedule a Meeting</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-              <Form.Group className="mb-3">
-                <Form.Label className="fw-semibold text-muted small text-uppercase">Project</Form.Label>
-                <Form.Select required value={formData.projectId} onChange={e => setFormData({...formData, projectId: e.target.value, activityId: ''})} className="shadow-none">
-                  <option value="">Select a project...</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </Form.Select>
-              </Form.Group>
-              
-              {formData.projectId && projects.find(p => p.id === formData.projectId)?.activities?.length > 0 && (
-                <Form.Group className="mb-3">
-                  <Form.Label className="fw-semibold text-muted small text-uppercase">Activity (Optional)</Form.Label>
-                  <Form.Select value={formData.activityId} onChange={e => setFormData({...formData, activityId: e.target.value})} className="shadow-none">
-                    <option value="">None</option>
-                    {projects.find(p => p.id === formData.projectId)?.activities.map((act: any) => (
-                      <option key={act.id} value={act.id}>{act.title}</option>
-                    ))}
+            {formError && <Alert variant="danger" className="py-2">{formError}</Alert>}
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3" controlId="sched-project">
+                  <Form.Label className="fw-semibold text-muted small text-uppercase">Project</Form.Label>
+                  <Form.Select required value={formData.projectId} onChange={e => { setFormData({ ...formData, projectId: e.target.value, activityId: '' }); setSlots([]); }} className="shadow-none">
+                    <option value="">Select a project...</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </Form.Select>
+                  {project && <Form.Text>Participants: all {members.length} project members.</Form.Text>}
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                {project?.activities?.length > 0 && (
+                  <Form.Group className="mb-3" controlId="sched-activity">
+                    <Form.Label className="fw-semibold text-muted small text-uppercase">Activity (Optional)</Form.Label>
+                    <Form.Select value={formData.activityId} onChange={e => setFormData({ ...formData, activityId: e.target.value })} className="shadow-none">
+                      <option value="">None</option>
+                      {project.activities.map((act: any) => <option key={act.id} value={act.id}>{act.title}</option>)}
+                    </Form.Select>
+                  </Form.Group>
+                )}
+              </Col>
+              <Col md={8}>
+                <Form.Group className="mb-3" controlId="sched-title">
+                  <Form.Label className="fw-semibold text-muted small text-uppercase">Meeting Title</Form.Label>
+                  <Form.Control type="text" required className="shadow-none" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group className="mb-3" controlId="sched-duration">
+                  <Form.Label className="fw-semibold text-muted small text-uppercase">Duration</Form.Label>
+                  <Form.Select value={formData.durationMin} onChange={e => setFormData({ ...formData, durationMin: Number(e.target.value) })}>
+                    {[15, 30, 45, 60, 90, 120, 180].map(m => <option key={m} value={m}>{m < 60 ? `${m} min` : `${m / 60} h${m % 60 ? ' 30' : ''}`}</option>)}
                   </Form.Select>
                 </Form.Group>
-              )}
+              </Col>
+            </Row>
 
-              <Form.Group className="mb-3">
-                <Form.Label className="fw-semibold text-muted small text-uppercase">Meeting Title</Form.Label>
-              <Form.Control type="text" required className="shadow-none" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
-            </Form.Group>
-            <Form.Group className="mb-4">
-              <Form.Label className="fw-semibold text-muted small text-uppercase">Duration (Minutes)</Form.Label>
-              <Form.Control type="number" required className="shadow-none" value={formData.durationMin} onChange={e => setFormData({...formData, durationMin: parseInt(e.target.value)})} />
-            </Form.Group>
-            
-            <h6 className="fw-bold text-primary border-bottom pb-2 mb-3 d-flex justify-content-between align-items-center">
-              Propose Time Slots
-              <Button variant="outline-primary" size="sm" onClick={handleAutoSuggest} disabled={isSuggesting}>
-                {isSuggesting ? 'Analyzing Calendars...' : <><i className="bi bi-magic me-1"></i> Auto-Suggest Slots</>}
-              </Button>
-            </h6>
-            <p className="small text-muted mb-3">Suggest up to 3 times for your team to vote on.</p>
-            <Form.Group className="mb-2">
-              <Form.Control type="datetime-local" required className="shadow-none border-primary border-opacity-50" value={formData.slot1} onChange={e => setFormData({...formData, slot1: e.target.value})} />
-            </Form.Group>
-            <Form.Group className="mb-2">
-              <Form.Control type="datetime-local" className="shadow-none" value={formData.slot2} onChange={e => setFormData({...formData, slot2: e.target.value})} />
-            </Form.Group>
-            <Form.Group className="mb-2">
-              <Form.Control type="datetime-local" className="shadow-none" value={formData.slot3} onChange={e => setFormData({...formData, slot3: e.target.value})} />
-            </Form.Group>
+            <h6 className="fw-bold text-primary border-bottom pb-2 mb-3">Proposed times ({slots.length}/{MAX_SLOTS})</h6>
+
+            <SlotFinder
+              projectId={formData.projectId}
+              durationMin={formData.durationMin}
+              participantIds={members.map((m: any) => m.userId)}
+              selected={slots}
+              onToggle={toggleSlot}
+              maxSelected={MAX_SLOTS}
+            />
+
+            <Form.Label className="small mb-1" htmlFor="sched-manual">Or add a time yourself (your time zone):</Form.Label>
+            <div className="d-flex gap-2 mb-3">
+              <Form.Control id="sched-manual" type="datetime-local" size="sm" value={manualSlot} onChange={e => setManualSlot(e.target.value)} style={{ maxWidth: 260 }} />
+              <Button size="sm" variant="outline-primary" onClick={addManualSlot} disabled={!manualSlot || slots.length >= MAX_SLOTS}>Add</Button>
+            </div>
+
+            {slots.length > 0 && (
+              <ListGroup>
+                {slots.map(s => (
+                  <ListGroup.Item key={s} className="d-flex justify-content-between align-items-center">
+                    <TimeWithZones iso={s} zones={memberZones} strong />
+                    <Button variant="link" size="sm" className="text-danger" onClick={() => toggleSlot(s)} aria-label="Remove this time">
+                      <i className="bi bi-x-lg" aria-hidden="true"></i>
+                    </Button>
+                  </ListGroup.Item>
+                ))}
+              </ListGroup>
+            )}
           </Modal.Body>
-          <Modal.Footer className="border-0 bg-light">
+          <Modal.Footer className="border-0">
             <Button variant="secondary" onClick={() => setShowScheduleModal(false)} className="rounded-pill px-4">Cancel</Button>
-            <Button variant="primary" type="submit" className="rounded-pill px-4 shadow-sm">Send Poll</Button>
+            <Button variant="primary" type="submit" disabled={slots.length === 0} className="rounded-pill px-4 shadow-sm">Send Poll</Button>
           </Modal.Footer>
         </Form>
       </Modal>
@@ -417,24 +455,24 @@ const Meetings = () => {
       {/* Voting Modal */}
       {selectedPoll && (
         <Modal show={showVoteModal} onHide={() => setShowVoteModal(false)} centered>
-          <Modal.Header closeButton className="bg-light border-0">
+          <Modal.Header closeButton className="border-0">
             <Modal.Title className="fw-bold">Vote on Meeting Time</Modal.Title>
           </Modal.Header>
           <Modal.Body>
             <h5 className="fw-bold text-primary">{selectedPoll.meeting.title}</h5>
-            <p className="text-muted small">{selectedPoll.meeting.description}</p>
+            {selectedPoll.meeting.description && <p className="text-muted small">{selectedPoll.meeting.description}</p>}
             <div className="alert alert-info py-2 small mb-4">
-              <i className="bi bi-info-circle me-2"></i>
-              Please select your availability for the proposed times below.
+              <i className="bi bi-info-circle me-2" aria-hidden="true"></i>
+              Times are in your time zone ({zoneCity(browserTimeZone())}). The meeting is confirmed automatically when a majority says "Yes" to one time.
             </div>
-            
+
             {selectedPoll.options.map((slot: string, idx: number) => (
-              <div key={idx} className="mb-3 p-3 bg-white border rounded shadow-sm">
-                <div className="fw-bold mb-3 d-flex align-items-center">
-                  <i className="bi bi-calendar-event text-primary me-2"></i>
-                  {new Date(slot).toLocaleString()}
+              <div key={slot} className="mb-3 p-3 border rounded shadow-sm">
+                <div className="mb-3 d-flex align-items-start">
+                  <i className="bi bi-calendar-event text-primary me-2 mt-1" aria-hidden="true"></i>
+                  <TimeWithZones iso={slot} zones={(selectedPoll.meeting.participants || []).map((p: any) => p.user?.timeZone)} strong />
                 </div>
-                <ToggleButtonGroup type="radio" name={`vote-${idx}`} className="w-100 d-flex" value={votes[slot]} onChange={(val) => setVotes({...votes, [slot]: val})}>
+                <ToggleButtonGroup type="radio" name={`vote-${idx}`} className="w-100 d-flex" value={votes[slot]} onChange={(val) => setVotes({ ...votes, [slot]: val })}>
                   <ToggleButton id={`yes-${idx}`} value="YES" variant={votes[slot] === 'YES' ? 'success' : 'outline-success'} className="flex-fill fw-semibold">Yes</ToggleButton>
                   <ToggleButton id={`ifneed-${idx}`} value="IF_NECESSARY" variant={votes[slot] === 'IF_NECESSARY' ? 'warning' : 'outline-warning'} className="flex-fill fw-semibold">If Needed</ToggleButton>
                   <ToggleButton id={`no-${idx}`} value="NO" variant={votes[slot] === 'NO' ? 'danger' : 'outline-danger'} className="flex-fill fw-semibold">No</ToggleButton>
@@ -442,13 +480,12 @@ const Meetings = () => {
               </div>
             ))}
           </Modal.Body>
-          <Modal.Footer className="border-0 bg-light">
+          <Modal.Footer className="border-0">
             <Button variant="secondary" onClick={() => setShowVoteModal(false)} className="rounded-pill px-4">Cancel</Button>
             <Button variant="primary" onClick={handleSubmitVote} disabled={Object.keys(votes).length !== selectedPoll.options.length} className="rounded-pill px-4 shadow-sm">Submit Votes</Button>
           </Modal.Footer>
         </Modal>
       )}
-
     </Container>
   );
 };

@@ -3,6 +3,7 @@ import { Container, Form, Button, Card, Alert } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext, takeLogoutReason } from '../context/AuthContext';
+import { browserTimeZone } from '../lib/time';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -33,7 +34,8 @@ const Login = () => {
     setNeedsVerification(false);
     setBusy(true);
     try {
-      const { data } = await axios.post('/api/auth/login', { email, password });
+      // The browser's time zone is saved on first login (used to show and plan meeting times).
+      const { data } = await axios.post('/api/auth/login', { email, password, timeZone: browserTimeZone() });
       if (data.mfaRequired) {
         setMfaToken(data.mfaToken);
         setCode('');

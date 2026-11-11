@@ -1,13 +1,14 @@
 // Email templates. Every value that comes from users (names, titles) goes through esc() so it cannot inject HTML.
 import { APP_TIMEZONE, FRONTEND_URL } from './config';
+import { zoneOf } from './timezones';
 import type { Email } from './mailer';
 
 export const esc = (value: unknown) =>
   String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-export const formatDateTime = (date: Date) =>
+export const formatDateTime = (date: Date, tz?: string | null) =>
   new Intl.DateTimeFormat('en-GB', {
-    timeZone: APP_TIMEZONE, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+    timeZone: zoneOf(tz ?? APP_TIMEZONE), weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
   }).format(date);
 
@@ -61,22 +62,22 @@ function layout({ to, subject, greetingName, bodyHtml, bodyText, button, footnot
   return { to, subject, html, text };
 }
 
-interface Person { email: string; firstName: string }
+interface Person { email: string; firstName: string; timeZone?: string | null }
 interface MeetingInfo { id: string; title: string; projectName: string; startDate?: Date | null; durationMin: number; organizerName?: string }
 
 const meetingsUrl = () => `${FRONTEND_URL}/meetings`;
-const detailsHtml = (m: MeetingInfo) => `
+const detailsHtml = (m: MeetingInfo, tz?: string | null) => `
   <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;width:100%">
     <tr><td style="padding:14px 16px;font-size:14px;line-height:1.7">
       <strong style="font-size:16px">${esc(m.title)}</strong><br>
       Project: ${esc(m.projectName)}<br>
-      ${m.startDate ? `When: <strong>${esc(formatDateTime(m.startDate))}</strong><br>` : ''}
+      ${m.startDate ? `When: <strong>${esc(formatDateTime(m.startDate, tz))}</strong><br>` : ''}
       Duration: ${m.durationMin} minutes
       ${m.organizerName ? `<br>Organizer: ${esc(m.organizerName)}` : ''}
     </td></tr>
   </table>`;
-const detailsText = (m: MeetingInfo) =>
-  [`Meeting: ${m.title}`, `Project: ${m.projectName}`, m.startDate ? `When: ${formatDateTime(m.startDate)}` : '', `Duration: ${m.durationMin} minutes`, m.organizerName ? `Organizer: ${m.organizerName}` : '']
+const detailsText = (m: MeetingInfo, tz?: string | null) =>
+  [`Meeting: ${m.title}`, `Project: ${m.projectName}`, m.startDate ? `When: ${formatDateTime(m.startDate, tz)}` : '', `Duration: ${m.durationMin} minutes`, m.organizerName ? `Organizer: ${m.organizerName}` : '']
     .filter(Boolean).join('\n');
 
 export const emails = {
@@ -104,9 +105,9 @@ export const emails = {
     to: user.email,
     subject: 'Your password was changed',
     greetingName: user.firstName,
-    bodyHtml: `<p style="margin:0 0 12px">The password of your account was changed on <strong>${esc(formatDateTime(when))}</strong> (IP address ${esc(ip)}).</p>
+    bodyHtml: `<p style="margin:0 0 12px">The password of your account was changed on <strong>${esc(formatDateTime(when, user.timeZone))}</strong> (IP address ${esc(ip)}).</p>
       <p style="margin:0"><strong>If this was not you</strong>, reset your password immediately with the button below and contact your system administrator so they can block the account.</p>`,
-    bodyText: `The password of your account was changed on ${formatDateTime(when)} (IP address ${ip}).\nIf this was not you, reset your password immediately and contact your system administrator so they can block the account.`,
+    bodyText: `The password of your account was changed on ${formatDateTime(when, user.timeZone)} (IP address ${ip}).\nIf this was not you, reset your password immediately and contact your system administrator so they can block the account.`,
     button: { label: 'Reset my password', url: `${FRONTEND_URL}/forgot-password` },
   }),
 
@@ -115,10 +116,10 @@ export const emails = {
     subject: `Vote on a time: ${m.title}`,
     greetingName: user.firstName,
     bodyHtml: `<p style="margin:0">${esc(m.organizerName || 'A colleague')} invited you to a meeting. Please vote on the proposed times.</p>
-      ${detailsHtml({ ...m, startDate: null, organizerName: undefined })}
+      ${detailsHtml({ ...m, startDate: null, organizerName: undefined }, user.timeZone)}
       <p style="margin:0 0 6px"><strong>Proposed times</strong></p>
-      <ul style="margin:0;padding-left:20px">${slots.map(s => `<li>${esc(formatDateTime(s))}</li>`).join('')}</ul>`,
-    bodyText: `${m.organizerName || 'A colleague'} invited you to a meeting. Please vote on the proposed times.\n\n${detailsText({ ...m, startDate: null, organizerName: undefined })}\n\nProposed times:\n${slots.map(s => `- ${formatDateTime(s)}`).join('\n')}`,
+      <ul style="margin:0;padding-left:20px">${slots.map(s => `<li>${esc(formatDateTime(s, user.timeZone))}</li>`).join('')}</ul>`,
+    bodyText: `${m.organizerName || 'A colleague'} invited you to a meeting. Please vote on the proposed times.\n\n${detailsText({ ...m, startDate: null, organizerName: undefined }, user.timeZone)}\n\nProposed times:\n${slots.map(s => `- ${formatDateTime(s, user.timeZone)}`).join('\n')}`,
     button: { label: 'Vote now', url: meetingsUrl() },
   }),
 
@@ -126,8 +127,8 @@ export const emails = {
     to: user.email,
     subject: `Confirmed: ${m.title}`,
     greetingName: user.firstName,
-    bodyHtml: `<p style="margin:0">The meeting time has been confirmed.</p>${detailsHtml(m)}`,
-    bodyText: `The meeting time has been confirmed.\n\n${detailsText(m)}`,
+    bodyHtml: `<p style="margin:0">The meeting time has been confirmed.</p>${detailsHtml(m, user.timeZone)}`,
+    bodyText: `The meeting time has been confirmed.\n\n${detailsText(m, user.timeZone)}`,
     button: { label: 'Open meetings', url: meetingsUrl() },
   }),
 
@@ -135,8 +136,8 @@ export const emails = {
     to: user.email,
     subject: `Moved: ${m.title}`,
     greetingName: user.firstName,
-    bodyHtml: `<p style="margin:0">A meeting you take part in has been moved${previousStart ? ` (it was on ${esc(formatDateTime(previousStart))})` : ''}.</p>${detailsHtml(m)}`,
-    bodyText: `A meeting you take part in has been moved${previousStart ? ` (it was on ${formatDateTime(previousStart)})` : ''}.\n\n${detailsText(m)}`,
+    bodyHtml: `<p style="margin:0">A meeting you take part in has been moved${previousStart ? ` (it was on ${esc(formatDateTime(previousStart, user.timeZone))})` : ''}.</p>${detailsHtml(m, user.timeZone)}`,
+    bodyText: `A meeting you take part in has been moved${previousStart ? ` (it was on ${formatDateTime(previousStart, user.timeZone)})` : ''}.\n\n${detailsText(m, user.timeZone)}`,
     button: { label: 'Open meetings', url: meetingsUrl() },
   }),
 
@@ -144,8 +145,8 @@ export const emails = {
     to: user.email,
     subject: `Reminder: ${m.title} ${when === '1 hour' ? 'starts in 1 hour' : 'is tomorrow'}`,
     greetingName: user.firstName,
-    bodyHtml: `<p style="margin:0">This is a reminder that your meeting starts in about <strong>${when}</strong>.</p>${detailsHtml(m)}`,
-    bodyText: `This is a reminder that your meeting starts in about ${when}.\n\n${detailsText(m)}`,
+    bodyHtml: `<p style="margin:0">This is a reminder that your meeting starts in about <strong>${when}</strong>.</p>${detailsHtml(m, user.timeZone)}`,
+    bodyText: `This is a reminder that your meeting starts in about ${when}.\n\n${detailsText(m, user.timeZone)}`,
     button: { label: 'Open meetings', url: meetingsUrl() },
   }),
 

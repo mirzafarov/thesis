@@ -3,6 +3,7 @@ import { Container, Card, Button, Modal, Badge, Table, Form, Alert, Row, Col } f
 import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 import TwoFactorSetup, { RecoveryCodes } from '../components/security/TwoFactorSetup';
+import { allTimeZones, browserTimeZone } from '../lib/time';
 
 interface Me {
   email: string;
@@ -16,7 +17,74 @@ interface Me {
   twoFactorRequired: boolean;
   recoveryCodesLeft: number;
   sessionIdleMinutes: number;
+  timeZone: string | null;
+  workdayStart: number;
+  workdayEnd: number;
 }
+
+/** Time zone and working hours: used to find meeting times that suit everyone. */
+const WorkingHoursCard = ({ me, onSaved }: { me: Me; onSaved: () => void }) => {
+  const [tz, setTz] = useState(me.timeZone || browserTimeZone());
+  const [start, setStart] = useState(me.workdayStart);
+  const [end, setEnd] = useState(me.workdayEnd);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const zones = allTimeZones();
+  const hours = Array.from({ length: 25 }, (_, h) => h);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await axios.put('/api/users/me/preferences', { timeZone: tz, workdayStart: start, workdayEnd: end });
+      setMsg({ ok: true, text: 'Saved.' });
+      onSaved();
+    } catch (err: any) {
+      setMsg({ ok: false, text: err.response?.data?.error || 'Could not save.' });
+    }
+  };
+
+  return (
+    <Card className="mb-4 saas-card">
+      <Card.Header className="bg-transparent py-3"><h5 className="mb-0 saas-heading"><i className="bi bi-globe2 me-2" aria-hidden="true"></i>Time zone & working hours</h5></Card.Header>
+      <Card.Body>
+        <p className="small" style={{ color: 'var(--text-secondary)' }}>
+          Meeting suggestions only use times inside everyone's working hours (Monday–Friday, in their own time zone), and meeting times are shown in each person's zone.
+        </p>
+        {msg && <Alert variant={msg.ok ? 'success' : 'danger'} className="py-2">{msg.text}</Alert>}
+        <Form onSubmit={save}>
+          <Form.Group className="mb-3" controlId="pref-tz">
+            <Form.Label>Time zone</Form.Label>
+            <Form.Select value={tz} onChange={e => setTz(e.target.value)}>
+              {!zones.includes(tz) && <option value={tz}>{tz}</option>}
+              {zones.map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
+            </Form.Select>
+            {tz !== browserTimeZone() && (
+              <Form.Text>This computer is set to {browserTimeZone().replace(/_/g, ' ')}. <Button variant="link" size="sm" className="p-0 align-baseline" onClick={() => setTz(browserTimeZone())}>Use it</Button></Form.Text>
+            )}
+          </Form.Group>
+          <Row>
+            <Col xs={6}>
+              <Form.Group className="mb-3" controlId="pref-start">
+                <Form.Label>Working day starts</Form.Label>
+                <Form.Select value={start} onChange={e => setStart(Number(e.target.value))}>
+                  {hours.slice(0, 24).map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+                </Form.Select>
+              </Form.Group>
+            </Col>
+            <Col xs={6}>
+              <Form.Group className="mb-3" controlId="pref-end">
+                <Form.Label>Working day ends</Form.Label>
+                <Form.Select value={end} onChange={e => setEnd(Number(e.target.value))}>
+                  {hours.slice(1).map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+                </Form.Select>
+              </Form.Group>
+            </Col>
+          </Row>
+          <Button type="submit" disabled={start >= end}>Save</Button>
+        </Form>
+      </Card.Body>
+    </Card>
+  );
+};
 
 interface SessionRow {
   id: string;
@@ -219,6 +287,8 @@ const Profile = () => {
         </Col>
 
         <Col xl={6}>
+          {me && <WorkingHoursCard key={`${me.timeZone}-${me.workdayStart}-${me.workdayEnd}`} me={me} onSaved={load} />}
+
           {/* Account and GDPR */}
           <Card className="mb-4 saas-card">
             <Card.Header className="bg-transparent py-3"><h5 className="mb-0 saas-heading"><i className="bi bi-person-badge me-2" aria-hidden="true"></i>Account & privacy (GDPR)</h5></Card.Header>

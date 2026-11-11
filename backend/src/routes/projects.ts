@@ -15,7 +15,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const memberInclude = {
   members: {
     include: {
-      user: { select: { id: true, firstName: true, lastName: true, email: true } },
+      user: { select: { id: true, firstName: true, lastName: true, email: true, timeZone: true } },
     },
   },
 } as const;

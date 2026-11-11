@@ -24,16 +24,28 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
         project: { select: { id: true, name: true } },
         organizer: { select: { id: true, firstName: true, lastName: true } },
         participants: {
-          include: { user: { select: { id: true, firstName: true, lastName: true } } },
+          include: { user: { select: { id: true, firstName: true, lastName: true, timeZone: true } } },
         },
-        polls: true,
+        polls: { orderBy: { startTime: 'asc' }, include: { votes: { select: { userId: true, vote: true } } } },
       },
+      orderBy: [{ startDate: 'asc' }, { createdAt: 'desc' }],
     });
 
     res.json(
-      meetings.map(m => ({
+      meetings.map(({ polls, ...m }) => ({
         ...m,
-        poll: { options: m.polls.map(p => p.startTime.toISOString()) },
+        poll: {
+          options: polls.map(p => p.startTime.toISOString()),
+          // Vote counts per proposed time, so everyone can see how the poll is going
+          tallies: polls.map(p => ({
+            start: p.startTime.toISOString(),
+            yes: p.votes.filter(v => v.vote === 'YES').length,
+            ifNecessary: p.votes.filter(v => v.vote === 'IF_NECESSARY').length,
+            no: p.votes.filter(v => v.vote === 'NO').length,
+          })),
+          voted: new Set(polls.flatMap(p => p.votes.map(v => v.userId))).size,
+          majority: Math.floor(m.participants.length / 2) + 1,
+        },
       }))
     );
   } catch (error) {
@@ -101,7 +113,9 @@ router.get('/polls/pending', authenticate, async (req: AuthRequest, res) => {
       },
       include: {
         project: { select: { name: true } },
-        polls: { include: { votes: true } },
+        polls: { orderBy: { startTime: 'asc' }, include: { votes: true } },
+        // Time zones of the participants, to show each proposed time on their clocks too
+        participants: { select: { user: { select: { id: true, timeZone: true } } } },
       },
     });
 
@@ -153,12 +167,88 @@ router.post('/poll/:meetingId/vote', authenticate, async (req: AuthRequest, res)
       );
     }
 
-    res.status(201).json(voteRecords);
+    // Doodle-style: once a majority says YES to a time, the meeting is confirmed automatically.
+    let autoConfirmed: { startDate: string } | null = null;
+    const winner = await majoritySlot(meeting.id);
+    if (winner) {
+      const confirmed = await confirmMeeting(meeting.id, winner.start);
+      if (confirmed) {
+        autoConfirmed = { startDate: winner.start.toISOString() };
+        await audit(req, {
+          userId, projectId: meeting.projectId, action: 'MEETING_AUTO_CONFIRMED',
+          details: `"${meeting.title}" confirmed automatically for ${winner.start.toISOString()}: ${winner.yes} of ${winner.total} participants voted YES.`,
+        });
+      }
+    }
+
+    res.status(201).json({ votes: voteRecords, autoConfirmed });
   } catch (error) {
     console.error('Error submitting vote:', error);
     res.status(500).json({ error: 'Failed to submit vote' });
   }
 });
+
+/**
+ * Confirm a meeting at a time: add it to every connected participant's Google Calendar and email everyone.
+ * Returns null if it was already confirmed (e.g. two people triggered it at once).
+ */
+async function confirmMeeting(meetingId: string, finalStart: Date) {
+  const existing = await prisma.meeting.findUnique({ where: { id: meetingId } });
+  if (!existing) return null;
+  const finalEnd = new Date(finalStart.getTime() + existing.durationMin * 60000);
+
+  // Only a meeting still in the voting stage can be confirmed (prevents double confirmation).
+  const claimed = await prisma.meeting.updateMany({
+    where: { id: meetingId, status: 'DRAFT' },
+    data: { status: 'CONFIRMED', startDate: finalStart, endDate: finalEnd },
+  });
+  if (claimed.count === 0) return null;
+
+  const meeting = (await prisma.meeting.findUnique({ where: { id: meetingId }, include: { participants: true } }))!;
+  let synced = 0;
+  for (const participant of meeting.participants) {
+    const account = await getGoogleClientForUser(participant.userId);
+    if (!account) continue;
+    try {
+      await google.calendar({ version: 'v3', auth: account.client }).events.insert({
+        calendarId: 'primary',
+        requestBody: {
+          summary: meeting.title,
+          description: meeting.description || 'Safe Zone meeting',
+          start: { dateTime: finalStart.toISOString() },
+          end: { dateTime: finalEnd.toISOString() },
+        },
+      });
+      synced++;
+    } catch (err) {
+      console.error('Failed to sync to calendar for user', participant.userId, err);
+    }
+  }
+  if (synced > 0) {
+    await prisma.meeting.update({ where: { id: meetingId }, data: { status: 'CALENDAR_SYNCHRONIZED' } });
+  }
+
+  notifyMeetingConfirmed(meetingId);
+  return { meeting: { ...meeting, status: synced > 0 ? 'CALENDAR_SYNCHRONIZED' : 'CONFIRMED' }, synced };
+}
+
+/**
+ * The time slot that more than half of all participants voted YES for (most YES votes, then earliest),
+ * or null if no slot has a majority yet.
+ */
+async function majoritySlot(meetingId: string) {
+  const meeting = await prisma.meeting.findUnique({
+    where: { id: meetingId },
+    include: { participants: true, polls: { include: { votes: true } } },
+  });
+  if (!meeting || meeting.status !== 'DRAFT') return null;
+  const needed = Math.floor(meeting.participants.length / 2) + 1;
+  const ranked = meeting.polls
+    .map(p => ({ start: p.startTime, yes: p.votes.filter(v => v.vote === 'YES').length }))
+    .filter(p => p.yes >= needed)
+    .sort((a, b) => b.yes - a.yes || a.start.getTime() - b.start.getTime());
+  return ranked[0] ? { ...ranked[0], needed, total: meeting.participants.length } : null;
+}
 
 // Finalize meeting (organizer only) and add it to connected participants' Google Calendars
 router.post('/:meetingId/finalize', authenticate, async (req: AuthRequest, res) => {
@@ -175,40 +265,11 @@ router.post('/:meetingId/finalize', authenticate, async (req: AuthRequest, res) 
       return res.status(400).json({ error: 'The chosen time must be one of the proposed slots' });
     }
 
-    const finalEnd = new Date(finalStart.getTime() + existing.durationMin * 60000);
-    const meeting = await prisma.meeting.update({
-      where: { id: meetingId },
-      data: { status: 'CONFIRMED', startDate: finalStart, endDate: finalEnd },
-      include: { participants: true },
-    });
+    const confirmed = await confirmMeeting(meetingId, finalStart);
+    if (!confirmed) return res.status(400).json({ error: 'This meeting is already confirmed' });
 
-    let synced = 0;
-    for (const participant of meeting.participants) {
-      const account = await getGoogleClientForUser(participant.userId);
-      if (!account) continue;
-      try {
-        await google.calendar({ version: 'v3', auth: account.client }).events.insert({
-          calendarId: 'primary',
-          requestBody: {
-            summary: meeting.title,
-            description: meeting.description || 'Safe Zone meeting',
-            start: { dateTime: finalStart.toISOString() },
-            end: { dateTime: finalEnd.toISOString() },
-          },
-        });
-        synced++;
-      } catch (err) {
-        console.error('Failed to sync to calendar for user', participant.userId, err);
-      }
-    }
-
-    if (synced > 0) {
-      await prisma.meeting.update({ where: { id: meetingId }, data: { status: 'CALENDAR_SYNCHRONIZED' } });
-    }
-
-    await audit(req, { userId: req.user.userId, projectId: meeting.projectId, action: 'MEETING_CONFIRMED', details: `Confirmed "${meeting.title}" for ${finalStart.toISOString()}.` });
-    notifyMeetingConfirmed(meetingId);
-    res.json({ ...meeting, calendarSynced: synced });
+    await audit(req, { userId: req.user.userId, projectId: confirmed.meeting.projectId, action: 'MEETING_CONFIRMED', details: `Confirmed "${confirmed.meeting.title}" for ${finalStart.toISOString()}.` });
+    res.json({ ...confirmed.meeting, calendarSynced: confirmed.synced });
   } catch (error) {
     console.error('Error finalizing meeting:', error);
     res.status(500).json({ error: 'Failed to finalize meeting' });

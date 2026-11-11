@@ -20,6 +20,9 @@ model User {
   emailVerifiedAt   DateTime?           // set when the user clicks the link in the confirmation email
   consentAt         DateTime?           // when the user accepted the privacy policy / GDPR rules
   consentVersion    String?             // which version of the rules they accepted
+  timeZone          String?             // IANA time zone, e.g. "Europe/Vilnius" (taken from the browser)
+  workdayStart      Int                 @default(9)  // working hours in the user's own time zone
+  workdayEnd        Int                 @default(17)
   totpSecret        String?             // two-factor secret (encrypted); set once 2FA is enabled
   totpPendingSecret String?             // secret shown during setup, before the first code is confirmed
   totpEnabledAt     DateTime?

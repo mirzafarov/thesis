@@ -16,6 +16,7 @@ import {
   generateRecoveryCodes, useRecoveryCode, remainingRecoveryCodes,
 } from '../lib/totp';
 import { authenticate } from '../middleware/auth';
+import { isValidTimeZone } from '../lib/timezones';
 import type { AuthRequest } from '../middleware/auth';
 
 const router = express.Router();
@@ -132,6 +133,7 @@ router.post('/register', [
         // GDPR: record when, and to which version of the rules, the user consented.
         consentAt: new Date(),
         consentVersion: PRIVACY_POLICY_VERSION,
+        timeZone: isValidTimeZone(req.body.timeZone) ? req.body.timeZone : null,
       },
     });
     await audit(req, { userId: newUser.id, action: 'REGISTER', details: `Account created; consented to privacy policy v${PRIVACY_POLICY_VERSION}.` });
@@ -238,6 +240,11 @@ router.post('/login', loginLimiter, async (req: any, res: any) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // First login from a browser: remember its time zone (users can change it in Settings).
+    if (!user.timeZone && isValidTimeZone(req.body.timeZone)) {
+      await prisma.user.update({ where: { id: user.id }, data: { timeZone: req.body.timeZone } });
+    }
+
     // Only after the password is correct, so this does not reveal anything to someone guessing.
     if (!user.emailVerifiedAt) {
       return res.status(403).json({
@@ -325,6 +332,9 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
       twoFactorRequired: await isTwoFactorRequired(user.id, user.systemRole),
       recoveryCodesLeft: user.totpEnabledAt ? await remainingRecoveryCodes(user.id) : 0,
       sessionIdleMinutes: SESSION_IDLE_MINUTES,
+      timeZone: user.timeZone,
+      workdayStart: user.workdayStart,
+      workdayEnd: user.workdayEnd,
     });
   } catch (error) {
     console.error(error);
