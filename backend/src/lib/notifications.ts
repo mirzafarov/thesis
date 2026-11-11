@@ -160,16 +160,23 @@ async function checkDelayedActivities(now: Date) {
 
 let running = false;
 export async function runScheduledNotifications(now = new Date()) {
-  if (running) return { reminders: 0, delays: 0 };
+  if (running) return { reminders: 0, delays: 0, held: 0 };
   running = true;
   try {
     const reminders = await sendMeetingReminders(now);
     const delays = await checkDelayedActivities(now);
-    if (reminders || delays) console.log(`[notifications] sent ${reminders} reminder(s), ${delays} delay alert(s)`);
-    return { reminders, delays };
+    // Meetings whose end time has passed are marked as held.
+    const held = await prisma.meeting.updateMany({
+      where: { status: { in: [...SCHEDULED] }, endDate: { lt: now } },
+      data: { status: 'COMPLETED' },
+    });
+    if (reminders || delays || held.count) {
+      console.log(`[notifications] sent ${reminders} reminder(s), ${delays} delay alert(s); ${held.count} meeting(s) marked as held`);
+    }
+    return { reminders, delays, held: held.count };
   } catch (err) {
     console.error('[notifications] scheduled run failed:', err);
-    return { reminders: 0, delays: 0 };
+    return { reminders: 0, delays: 0, held: 0 };
   } finally {
     running = false;
   }

@@ -501,7 +501,33 @@ router.get('/me/export', authenticate, async (req: AuthRequest, res) => {
 router.delete('/me', authenticate, async (req: AuthRequest, res) => {
   try {
     const userId = req.user.userId;
+
+    // Projects must not be left behind empty or without a manager.
+    const memberships = await prisma.projectMembership.findMany({
+      where: { userId },
+      include: { project: { include: { members: { orderBy: { createdAt: 'asc' } } } } },
+    });
+    const emptyProjects: string[] = [];
+    const promotions: { projectId: string; membershipId: string; userId: string }[] = [];
+    for (const m of memberships) {
+      const others = m.project.members.filter(x => x.userId !== userId);
+      if (others.length === 0) {
+        emptyProjects.push(m.projectId);
+      } else if (m.role === 'MANAGER' && !others.some(x => x.role === 'MANAGER')) {
+        // The longest-standing remaining member takes over as manager.
+        promotions.push({ projectId: m.projectId, membershipId: others[0]!.id, userId: others[0]!.userId });
+      }
+    }
+
     await prisma.$transaction([
+      ...promotions.map(p => prisma.projectMembership.update({ where: { id: p.membershipId }, data: { role: 'MANAGER' } })),
+      ...promotions.map(p => prisma.auditLog.create({
+        data: {
+          projectId: p.projectId, action: 'MEMBER_ROLE_CHANGED', ipAddress: clientIp(req),
+          details: `User ${p.userId} became MANAGER because the only manager deleted their account.`,
+        },
+      })),
+      prisma.project.deleteMany({ where: { id: { in: emptyProjects } } }),
       // Keep the audit trail but detach it from the deleted person.
       prisma.auditLog.updateMany({ where: { userId }, data: { userId: null } }),
       // Meetings require an organizer, so meetings this user organized are removed with them.
@@ -512,7 +538,7 @@ router.delete('/me', authenticate, async (req: AuthRequest, res) => {
         data: {
           action: 'DELETE_ACCOUNT',
           ipAddress: clientIp(req),
-          details: `Account for User ID ${userId} was permanently deleted (GDPR Right to be Forgotten).`
+          details: `Account for User ID ${userId} was permanently deleted (GDPR Right to be Forgotten); ${emptyProjects.length} project(s) without other members were deleted.`
         }
       }),
     ]);

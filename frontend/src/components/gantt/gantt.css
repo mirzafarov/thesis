@@ -53,9 +53,12 @@
   padding: 0 10px;
   background: var(--surface);
   border-right: 1px solid var(--gantt-grid);
+  /* Covers the 1px sliver of bars that can show through at fractional scroll positions */
+  box-shadow: -4px 0 0 var(--surface);
   font-size: 0.875rem;
   overflow: hidden;
 }
+.gantt-row.is-phase .gantt-label { background: var(--surface); }
 .gantt-row.is-phase .gantt-label { font-weight: 700; }
 .gantt-row:not(.is-phase):not(.gantt-header):not(.gantt-group) .gantt-label { padding-left: 26px; }
 .gantt-label-btn {

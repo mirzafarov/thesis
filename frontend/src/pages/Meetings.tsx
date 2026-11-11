@@ -9,11 +9,17 @@ import { browserTimeZone, formatInZone, otherZonesLine, zoneCity } from '../lib/
 
 const MAX_SLOTS = 5;
 const isScheduled = (m: any) => ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'].includes(m.status);
+// The AI assistant also helps after a meeting (e.g. writing the minutes).
+const canUseAI = (m: any) => isScheduled(m) || ['IN_PROGRESS', 'COMPLETED'].includes(m.status);
+const badgeOf = (m: any) => (isScheduled(m) ? { bg: 'success' } : ['COMPLETED', 'IN_PROGRESS'].includes(m.status) ? { bg: 'secondary' } : m.status === 'CANCELLED' ? { bg: 'danger' } : { bg: 'warning', text: 'dark' as const });
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Voting',
   CONFIRMED: 'Confirmed',
   CALENDAR_SYNCHRONIZED: 'Confirmed · in calendar',
   RESCHEDULED: 'Moved',
+  IN_PROGRESS: 'In progress',
+  COMPLETED: 'Held',
+  CANCELLED: 'Cancelled',
 };
 
 /** "Thu 12 Nov, 15:00" plus "08:00 New York · 22:00 Tokyo" for the other people's zones (night times highlighted). */
@@ -240,11 +246,11 @@ const Meetings = () => {
                     )}
                   </div>
                   <div className="text-end">
-                    <Badge bg={isScheduled(meeting) ? 'success' : 'warning'} text={isScheduled(meeting) ? undefined : 'dark'} className="mb-2 px-3 py-2 rounded-pill">
+                    <Badge {...badgeOf(meeting)} className="mb-2 px-3 py-2 rounded-pill">
                       {STATUS_LABEL[meeting.status] || meeting.status}
                     </Badge>
                     <div className="d-flex gap-2 justify-content-end">
-                      {isScheduled(meeting) && (
+                      {canUseAI(meeting) && (
                         <Button variant="outline-primary" size="sm" onClick={() => openAIModal(meeting.id)}>
                           <i className="bi bi-magic me-1" aria-hidden="true"></i> AI Assistant
                         </Button>

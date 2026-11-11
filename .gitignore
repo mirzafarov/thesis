@@ -26,3 +26,6 @@ Thumbs.db
 
 # Emails saved locally when no SMTP server is configured
 backend/mail-outbox/
+
+# Result of the last end-to-end test run
+backend/tests/e2e/last-run.txt

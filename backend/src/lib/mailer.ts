@@ -36,10 +36,20 @@ function saveToOutbox(email: Email) {
   console.log(`[mail] To ${email.to}: "${email.subject}" (saved to mail-outbox/${path.basename(file)})`);
 }
 
+/**
+ * Addresses that can never receive mail (reserved for testing and documentation, RFC 2606 / RFC 6761).
+ * Email to them is always kept in the local outbox — even when a real mail server is configured —
+ * so test and demo accounts never cause real emails or bounce messages.
+ */
+export function isReservedAddress(address: string) {
+  const domain = address.split('@').pop()?.toLowerCase().trim() ?? '';
+  return /\.(test|example|invalid|localhost)$/.test(domain) || /^example\.(com|net|org)$/.test(domain);
+}
+
 /** Send an email. Never throws: a failed email must not break the action that triggered it. */
 export async function sendEmail(email: Email): Promise<boolean> {
   try {
-    if (!transporter) {
+    if (!transporter || isReservedAddress(email.to)) {
       saveToOutbox(email);
       return true;
     }
