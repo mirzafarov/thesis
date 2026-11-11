@@ -1,9 +1,17 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Button, Card, Col, Container, Row, Modal, Form, Badge, ListGroup, ToggleButton, ToggleButtonGroup } from 'react-bootstrap';
+import { Button, Card, Col, Container, Row, Modal, Form, Badge, ToggleButton, ToggleButtonGroup } from 'react-bootstrap';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import ReactMarkdown from 'react-markdown';
+
+// Convert a UTC ISO string to the "YYYY-MM-DDTHH:mm" local-time format a datetime-local input expects.
+const toLocalInputValue = (iso: string) => {
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+
+const isScheduled = (m: any) => ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'].includes(m.status);
 
 const Meetings = () => {
   const [meetings, setMeetings] = useState<any[]>([]);
@@ -43,9 +51,9 @@ const Meetings = () => {
   const fetchData = async () => {
     try {
       const [meetingsRes, pollsRes, projectsRes] = await Promise.all([
-        axios.get('http://localhost:5001/api/meetings'),
-        axios.get('http://localhost:5001/api/meetings/polls/pending'),
-        axios.get('http://localhost:5001/api/projects')
+        axios.get('/api/meetings'),
+        axios.get('/api/meetings/polls/pending'),
+        axios.get('/api/projects')
       ]);
       setMeetings(meetingsRes.data);
       setPendingPolls(pollsRes.data);
@@ -76,13 +84,16 @@ const Meetings = () => {
 
   const handleCreatePoll = async (e: React.FormEvent) => {
     e.preventDefault();
-    const proposedSlots = [formData.slot1, formData.slot2, formData.slot3].filter(s => s);
-    
+    // datetime-local values are in the browser's time zone; send exact UTC instants to the server.
+    const proposedSlots = [formData.slot1, formData.slot2, formData.slot3]
+      .filter(s => s)
+      .map(s => new Date(s).toISOString());
+
     const project = projects.find(p => p.id === formData.projectId);
     const participantIds = project ? project.members.map((m: any) => m.userId) : [];
 
     try {
-      await axios.post('http://localhost:5001/api/meetings/poll', {
+      await axios.post('/api/meetings/poll', {
         ...formData,
         proposedSlots,
         participantIds
@@ -105,19 +116,22 @@ const Meetings = () => {
     
     setIsSuggesting(true);
     try {
-      const res = await axios.post('http://localhost:5001/api/calendar/suggest', {
+      const res = await axios.post('/api/calendar/suggest', {
         participantIds,
         durationMin: formData.durationMin,
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString()
       });
       
-      const slots = res.data.slots;
+      const slots: string[] = res.data.slots;
+      if (slots.length === 0) {
+        alert('No free slots found in the next 7 days.');
+      }
       setFormData({
         ...formData,
-        slot1: slots[0] ? slots[0].slice(0, 16) : '',
-        slot2: slots[1] ? slots[1].slice(0, 16) : '',
-        slot3: slots[2] ? slots[2].slice(0, 16) : ''
+        slot1: slots[0] ? toLocalInputValue(slots[0]) : '',
+        slot2: slots[1] ? toLocalInputValue(slots[1]) : '',
+        slot3: slots[2] ? toLocalInputValue(slots[2]) : ''
       });
     } catch (err) {
       console.error('Failed to auto suggest', err);
@@ -139,7 +153,7 @@ const Meetings = () => {
     }));
 
     try {
-      await axios.post(`http://localhost:5001/api/meetings/poll/${selectedPoll.id}/vote`, { votes: voteArray });
+      await axios.post(`/api/meetings/poll/${selectedPoll.id}/vote`, { votes: voteArray });
       setShowVoteModal(false);
       fetchData();
     } catch (err) {
@@ -156,7 +170,7 @@ const Meetings = () => {
   const handleFinalize = async () => {
     if (!finalSlot) return;
     try {
-      await axios.post(`http://localhost:5001/api/meetings/${selectedMeetingToFinalize.id}/finalize`, { finalStartDate: finalSlot });
+      await axios.post(`/api/meetings/${selectedMeetingToFinalize.id}/finalize`, { finalStartDate: finalSlot });
       setShowFinalizeModal(false);
       fetchData();
     } catch (err) {
@@ -169,7 +183,7 @@ const Meetings = () => {
     setIsGenerating(true);
     setGeneratedDraft('');
     try {
-      const res = await axios.post('http://localhost:5001/api/ai/generate', {
+      const res = await axios.post('/api/ai/generate', {
         meetingId: selectedMeetingId,
         draftType,
         prompt: aiPrompt
@@ -216,11 +230,11 @@ const Meetings = () => {
                     </Card.Text>
                   </div>
                   <div className="text-end">
-                    <Badge bg={meeting.status === 'CONFIRMED' ? 'success' : 'warning'} className="mb-2 px-3 py-2 rounded-pill">
-                      {meeting.status}
+                    <Badge bg={isScheduled(meeting) ? 'success' : 'warning'} className="mb-2 px-3 py-2 rounded-pill">
+                      {meeting.status === 'CALENDAR_SYNCHRONIZED' ? 'CONFIRMED · IN CALENDAR' : meeting.status}
                     </Badge>
                     <div className="d-flex gap-2 justify-content-end">
-                      {meeting.status === 'CONFIRMED' && (
+                      {isScheduled(meeting) && (
                         <Button variant="outline-primary" size="sm" onClick={() => openAIModal(meeting.id)}>
                           <i className="bi bi-magic me-1"></i> AI Assistant
                         </Button>

@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import { useContext, useState } from 'react';
 import { Container, Card, Button, Modal } from 'react-bootstrap';
 import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
@@ -9,7 +9,7 @@ const Profile = () => {
 
   const handleExportData = async () => {
     try {
-      const res = await axios.get('http://localhost:5001/api/auth/me/export');
+      const res = await axios.get('/api/auth/me/export');
       const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(res.data, null, 2));
       const downloadAnchorNode = document.createElement('a');
       downloadAnchorNode.setAttribute('href', dataStr);
@@ -25,7 +25,7 @@ const Profile = () => {
 
   const confirmDeleteAccount = async () => {
     try {
-      await axios.delete('http://localhost:5001/api/auth/me');
+      await axios.delete('/api/auth/me');
       logout();
     } catch (err) {
       console.error(err);

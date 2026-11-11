@@ -1,85 +1,56 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
-import { authenticate, AuthRequest } from '../middleware/auth';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { prisma } from '../lib/prisma';
+import { generateText, isAiConfigured } from '../lib/ai';
+import { authenticate, isProjectMember } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
-// Initialize the Gemini API client
-// If the key is missing, it will throw an error, which is caught gracefully below
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const DRAFT_TYPES = ['INVITATION', 'AGENDA', 'REMINDER', 'SUMMARY'] as const;
 
 // Generate a draft via AI
 router.post('/generate', authenticate, async (req: AuthRequest, res) => {
   try {
     const userId = req.user.userId;
-    const { meetingId, draftType, prompt } = req.body; // INVITATION, AGENDA, REMINDER, SUMMARY
+    const { meetingId, draftType, prompt } = req.body;
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!isAiConfigured()) {
       return res.status(500).json({ error: 'Gemini API key is not configured on the server.' });
     }
+    if (!DRAFT_TYPES.includes(draftType)) {
+      return res.status(400).json({ error: 'Invalid draft type' });
+    }
 
-    // Get the meeting context to feed the AI
     const meeting = await prisma.meeting.findUnique({
       where: { id: meetingId },
-      include: { project: true }
+      include: { project: true },
     });
-
-    if (!meeting) {
-      return res.status(404).json({ error: 'Meeting not found' });
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (!(await isProjectMember(userId, meeting.projectId))) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
+    const context = `Project Name: ${meeting.project.name}. Meeting Title: ${meeting.title}.`;
+    const tasks: Record<(typeof DRAFT_TYPES)[number], string> = {
+      INVITATION: `You are an AI assistant helping a project manager write a professional meeting invitation.
+      ${context}
+      Task: Write a concise, polite email invitation based on the following user prompt.`,
+      AGENDA: `You are an AI assistant helping organize a meeting.
+      ${context}
+      Task: Generate a clear, structured bullet-point meeting agenda based on the following user prompt.`,
+      REMINDER: `You are an AI assistant helping a project manager remind participants about a meeting.
+      ${context}
+      Task: Write a short, friendly reminder message based on the following user prompt.`,
+      SUMMARY: `You are an AI assistant generating meeting minutes.
+      ${context}
+      Task: Summarize the following meeting notes into a professional summary with clear action items.`,
+    };
 
-    let systemInstruction = '';
-    if (draftType === 'INVITATION') {
-      systemInstruction = `You are an AI assistant helping a project manager write a professional meeting invitation. 
-      Project Name: ${meeting.project.name}. Meeting Title: ${meeting.title}. 
-      Task: Write a concise, polite email invitation based on the following user prompt.`;
-    } else if (draftType === 'AGENDA') {
-      systemInstruction = `You are an AI assistant helping organize a meeting. 
-      Project Name: ${meeting.project.name}. Meeting Title: ${meeting.title}. 
-      Task: Generate a clear, structured bullet-point meeting agenda based on the following user prompt.`;
-    } else if (draftType === 'SUMMARY') {
-      systemInstruction = `You are an AI assistant generating meeting minutes.
-      Project Name: ${meeting.project.name}. Meeting Title: ${meeting.title}. 
-      Task: Summarize the following meeting notes into a professional summary with clear action items.`;
-    } else {
-      systemInstruction = `You are a helpful AI assistant drafting a document for a meeting called ${meeting.title}.`;
-    }
-
-    const fullPrompt = `${systemInstruction}\n\nUser Prompt: ${prompt}`;
-
-    let result;
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        result = await model.generateContent(fullPrompt);
-        break;
-      } catch (err: any) {
-        if (err.message && err.message.includes('503') && retries > 1) {
-          console.warn(`503 High Demand Error. Retrying... (${retries - 1} attempts left)`);
-          await new Promise(res => setTimeout(res, 2000));
-          retries--;
-        } else {
-          throw err;
-        }
-      }
-    }
-    
-    if (!result) throw new Error('Failed to generate content from Gemini after retries.');
-    const generatedContent = result.response.text();
+    const content = await generateText(`${tasks[draftType as (typeof DRAFT_TYPES)[number]]}\n\nUser Prompt: ${prompt}`);
 
     const draft = await prisma.aiDraft.create({
-      data: {
-        meetingId,
-        userId,
-        draftType,
-        content: generatedContent
-      }
+      data: { meetingId, userId, draftType, content },
     });
-
     res.status(201).json(draft);
   } catch (error: any) {
     console.error('Error generating AI draft:', error);

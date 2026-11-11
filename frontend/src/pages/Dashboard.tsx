@@ -21,14 +21,14 @@ const Dashboard = () => {
   const fetchDashboardData = () => {
     if (user) {
       Promise.all([
-        axios.get('http://localhost:5001/api/projects'),
-        axios.get('http://localhost:5001/api/meetings'),
-        axios.get('http://localhost:5001/api/meetings/polls/pending'),
-        axios.get('http://localhost:5001/api/calendar/status')
+        axios.get('/api/projects'),
+        axios.get('/api/meetings'),
+        axios.get('/api/meetings/polls/pending'),
+        axios.get('/api/calendar/status')
       ]).then(([projectsRes, meetingsRes, pollsRes, calRes]) => {
         setStats({
           projects: projectsRes.data.length,
-          upcomingMeetings: meetingsRes.data.filter((m: any) => m.status === 'CONFIRMED').length
+          upcomingMeetings: meetingsRes.data.filter((m: any) => ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'].includes(m.status) && new Date(m.startDate) >= new Date()).length
         });
         setPendingPolls(pollsRes.data);
         setCalendarStatus(calRes.data);
@@ -37,9 +37,9 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    axios.get('http://localhost:5001/api/health')
+    axios.get('/api/health')
       .then(res => setBackendStatus(`Connected: ${res.data.message}`))
-      .catch(err => setBackendStatus('Disconnected: Could not reach the backend API'));
+      .catch(() => setBackendStatus('Disconnected: Could not reach the backend API'));
 
     fetchDashboardData();
 
@@ -61,7 +61,7 @@ const Dashboard = () => {
 
   const handleConnectCalendar = async () => {
     try {
-      const res = await axios.get('http://localhost:5001/api/calendar/google/auth');
+      const res = await axios.get('/api/calendar/google/auth');
       window.open(res.data.url, 'googleAuth', 'width=500,height=600');
     } catch (err) {
       console.error('Failed to get auth URL', err);
@@ -70,7 +70,7 @@ const Dashboard = () => {
 
   const handleDisconnectCalendar = async () => {
     try {
-      await axios.delete('http://localhost:5001/api/calendar/disconnect');
+      await axios.delete('/api/calendar/disconnect');
       fetchDashboardData();
     } catch (err) {
       console.error('Failed to disconnect calendar', err);

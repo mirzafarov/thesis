@@ -27,7 +27,7 @@ const Projects = () => {
 
   const fetchProjects = async () => {
     try {
-      const res = await axios.get('http://localhost:5001/api/projects');
+      const res = await axios.get('/api/projects');
       setProjects(res.data);
     } catch (err) {
       console.error(err);
@@ -41,7 +41,7 @@ const Projects = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://localhost:5001/api/projects', { name, description });
+      const res = await axios.post('/api/projects', { name, description });
       setShowModal(false);
       setName('');
       setDescription('');
@@ -54,7 +54,7 @@ const Projects = () => {
   const handleDeleteProject = async () => {
     if (!projectToDelete) return;
     try {
-      await axios.delete(`http://localhost:5001/api/projects/${projectToDelete}`);
+      await axios.delete(`/api/projects/${projectToDelete}`);
       setShowDeleteModal(false);
       setProjectToDelete(null);
       fetchProjects();

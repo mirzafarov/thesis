@@ -55,7 +55,7 @@ const Register = () => {
 
     setLoading(true);
     try {
-      await axios.post('http://localhost:5001/api/auth/register', { 
+      await axios.post('/api/auth/register', { 
         firstName, lastName, email, phone, password, gdprConsent
       });
       navigate('/login');

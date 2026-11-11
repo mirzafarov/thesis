@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import { Container, Card, Table, Badge } from 'react-bootstrap';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
@@ -10,7 +10,7 @@ const AdminLogs = () => {
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        const res = await axios.get('http://localhost:5001/api/users/admin/logs');
+        const res = await axios.get('/api/users/admin/logs');
         setLogs(res.data);
       } catch (err) {
         console.error(err);
@@ -51,8 +51,8 @@ const AdminLogs = () => {
             <tbody>
               {logs.map(log => (
                 <tr key={log.id} style={{ transition: 'background-color 0.2s' }}>
-                  <td style={tdStyle} className="text-muted" style={{...tdStyle, color: 'var(--text-secondary)'}}>{new Date(log.createdAt).toLocaleString()}</td>
-                  <td style={tdStyle} className="fw-semibold" style={{...tdStyle, color: 'var(--text-primary)'}}>{log.user ? `${log.user.firstName} ${log.user.lastName}` : 'System'}</td>
+                  <td className="text-muted" style={{...tdStyle, color: 'var(--text-secondary)'}}>{new Date(log.createdAt).toLocaleString()}</td>
+                  <td className="fw-semibold" style={{...tdStyle, color: 'var(--text-primary)'}}>{log.user ? `${log.user.firstName} ${log.user.lastName}` : 'System'}</td>
                   <td style={tdStyle}>
                     <Badge 
                       bg="transparent" 
@@ -68,7 +68,7 @@ const AdminLogs = () => {
                       {formatIP(log.ipAddress)}
                     </span>
                   </td>
-                  <td style={tdStyle} style={{...tdStyle, color: 'var(--text-primary)'}}>{log.details}</td>
+                  <td style={{...tdStyle, color: 'var(--text-primary)'}}>{log.details}</td>
                 </tr>
               ))}
               {logs.length === 0 && (

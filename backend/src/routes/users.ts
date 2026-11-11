@@ -1,9 +1,9 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { prisma } from '../lib/prisma';
+import { authenticate } from '../middleware/auth';
+import type { AuthRequest } from '../middleware/auth';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Search users by email
 router.get('/search', authenticate, async (req: AuthRequest, res) => {
@@ -36,7 +36,6 @@ router.get('/search', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-export default router;
 
 // Get Audit Logs (ADMIN only)
 router.get('/admin/logs', authenticate, async (req: AuthRequest, res) => {
@@ -74,3 +73,4 @@ router.get('/admin/all', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
+export default router;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import { Container, Card, Table, Badge } from 'react-bootstrap';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
@@ -10,7 +10,7 @@ const UserManagement = () => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await axios.get('http://localhost:5001/api/users/admin/all');
+        const res = await axios.get('/api/users/admin/all');
         setUsersList(res.data);
       } catch (err) {
         console.error(err);
