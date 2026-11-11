@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Container, Form, Button, Card, Alert, InputGroup } from 'react-bootstrap';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
 import 'react-phone-number-input/style.css';
 import PhoneInput from 'react-phone-number-input';
@@ -17,7 +17,7 @@ const Register = () => {
   const [gdprConsent, setGdprConsent] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const [success, setSuccess] = useState('');
 
   const calculateStrength = (pass: string) => {
     let score = 0;
@@ -55,10 +55,10 @@ const Register = () => {
 
     setLoading(true);
     try {
-      await axios.post('/api/auth/register', { 
+      const res = await axios.post('/api/auth/register', {
         firstName, lastName, email, phone, password, gdprConsent
       });
-      navigate('/login');
+      setSuccess(res.data.message);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.');
     } finally {
@@ -75,6 +75,12 @@ const Register = () => {
           <Card.Body className="p-4 p-md-5">
             <h2 className="text-center mb-4 saas-heading fw-bold">Sign Up</h2>
             {error && <Alert variant="danger">{error}</Alert>}
+            {success ? (
+              <Alert variant="success" className="mb-0">
+                <i className="bi bi-envelope-check me-2" aria-hidden="true"></i>{success}
+                <div className="mt-3"><Link to="/login" className="btn btn-success btn-sm">Go to log in</Link></div>
+              </Alert>
+            ) : (
             <Form onSubmit={handleSubmit}>
               <div className="row">
                 <Form.Group id="firstName" className="col-6 mb-3">
@@ -148,6 +154,7 @@ const Register = () => {
                 Sign Up
               </Button>
             </Form>
+            )}
           </Card.Body>
         </Card>
         <div className="w-100 text-center mt-3" style={{color: 'var(--text-secondary)'}}>

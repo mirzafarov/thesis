@@ -10,6 +10,7 @@ import Profile from './pages/Profile';
 import AdminLogs from './pages/AdminLogs';
 import UserManagement from './pages/UserManagement';
 import OAuthSuccess from './pages/OAuthSuccess';
+import { ForgotPassword, ResetPassword, VerifyEmail } from './pages/AuthPages';
 import { AuthContext, AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useEffect, useContext } from 'react';
@@ -34,6 +35,9 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/oauth-success" element={<OAuthSuccess />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
           
           {/* Protected Routes wrapped in Layout */}
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>

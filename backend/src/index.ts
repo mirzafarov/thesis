@@ -9,6 +9,8 @@ import meetingRoutes from './routes/meetings';
 import aiRoutes from './routes/ai';
 import userRoutes from './routes/users';
 import calendarRoutes from './routes/calendar';
+import { mailMode } from './lib/mailer';
+import { startNotificationScheduler } from './lib/notifications';
 
 const app = express();
 const port = process.env.PORT || 5001;
@@ -36,4 +38,6 @@ app.get('/api/health', (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+  console.log(`[mail] Emails go to: ${mailMode}`);
+  startNotificationScheduler();
 });

@@ -17,6 +17,7 @@ model User {
   firstName         String
   lastName          String
   phone             String?
+  emailVerifiedAt   DateTime?           // set when the user clicks the link in the confirmation email
   systemRole        SystemRole          @default(USER) // e.g., ADMIN, USER
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
@@ -29,6 +30,40 @@ model User {
   pollVotes          PollVote[]
   auditLogs          AuditLog[]
   responsibleFor     Activity[]          @relation("ActivityResponsible")
+  tokens             UserToken[]
+  notifications      NotificationLog[]
+}
+
+// One-time links sent by email (password reset, email confirmation).
+// Only a SHA-256 hash of the token is stored, so a database leak does not expose usable links.
+model UserToken {
+  id        String         @id @default(uuid())
+  userId    String
+  purpose   TokenPurpose
+  tokenHash String         @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime       @default(now())
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum TokenPurpose {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+}
+
+// Record of notification emails already sent, so nobody gets the same reminder twice.
+model NotificationLog {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // e.g. MEETING_REMINDER_24H, ACTIVITY_DELAYED
+  refId     String   // what it is about, e.g. a meeting id
+  sentAt    DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, refId])
 }
 
 enum SystemRole {

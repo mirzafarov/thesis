@@ -3,6 +3,7 @@ import { google } from 'googleapis';
 import { prisma } from '../lib/prisma';
 import { generateText, isAiConfigured } from '../lib/ai';
 import { getGoogleClientForUser } from '../lib/google';
+import { notifyMeetingConfirmed, notifyMeetingInvitation, notifyMeetingRescheduled } from '../lib/notifications';
 import { authenticate, isProjectMember } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 
@@ -78,6 +79,7 @@ router.post('/poll', authenticate, async (req: AuthRequest, res) => {
       include: { polls: true },
     });
 
+    notifyMeetingInvitation(meeting.id);
     res.status(201).json(meeting);
   } catch (error) {
     console.error('Error creating meeting poll:', error);
@@ -202,6 +204,7 @@ router.post('/:meetingId/finalize', authenticate, async (req: AuthRequest, res) 
       await prisma.meeting.update({ where: { id: meetingId }, data: { status: 'CALENDAR_SYNCHRONIZED' } });
     }
 
+    notifyMeetingConfirmed(meetingId);
     res.json({ ...meeting, calendarSynced: synced });
   } catch (error) {
     console.error('Error finalizing meeting:', error);
@@ -239,6 +242,7 @@ router.put('/:meetingId/reschedule', authenticate, async (req: AuthRequest, res)
         status: 'RESCHEDULED',
       },
     });
+    notifyMeetingRescheduled(meetingId, meeting.startDate);
     res.json(updated);
   } catch (error) {
     console.error('Error rescheduling meeting:', error);
