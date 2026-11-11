@@ -6,6 +6,7 @@ import Register from './pages/Register';
 import Projects from './pages/Projects';
 import ProjectDetails from './pages/ProjectDetails';
 import Meetings from './pages/Meetings';
+import Reports from './pages/Reports';
 import Profile from './pages/Profile';
 import AdminLogs from './pages/AdminLogs';
 import UserManagement from './pages/UserManagement';
@@ -48,6 +49,7 @@ function App() {
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:id" element={<ProjectDetails />} />
             <Route path="/meetings" element={<Meetings />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
             <Route path="/admin/users" element={<AdminRoute><UserManagement /></AdminRoute>} />

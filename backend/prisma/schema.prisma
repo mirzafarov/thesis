@@ -198,6 +198,7 @@ model Meeting {
   startDate   DateTime? // null if still in polling
   endDate     DateTime?
   durationMin Int
+  category    MeetingCategory @default(OTHER) // used to filter reports, e.g. only strategic meetings
   status      MeetingStatus @default(DRAFT)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -209,6 +210,14 @@ model Meeting {
   participants MeetingParticipant[]
   polls        MeetingPoll[]
   aiDrafts     AiDraft[]
+}
+
+enum MeetingCategory {
+  STRATEGIC
+  PLANNING
+  REVIEW
+  STATUS
+  OTHER
 }
 
 enum MeetingStatus {

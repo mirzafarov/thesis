@@ -38,6 +38,9 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavClick }) => {
             <NavLink to="/meetings" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
               <i className="bi bi-calendar-event fs-5 me-3"></i> Meetings
             </NavLink>
+            <NavLink to="/reports" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
+              <i className="bi bi-bar-chart-line fs-5 me-3"></i> Reports
+            </NavLink>
           </>
         )}
         

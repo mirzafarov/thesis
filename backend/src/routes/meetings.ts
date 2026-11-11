@@ -11,6 +11,7 @@ import { audit } from '../lib/audit';
 const router = express.Router();
 
 const VOTE_TYPES = ['YES', 'NO', 'IF_NECESSARY'] as const;
+const MEETING_CATEGORIES = ['STRATEGIC', 'PLANNING', 'REVIEW', 'STATUS', 'OTHER'] as const;
 
 // Get all meetings for user
 router.get('/', authenticate, async (req: AuthRequest, res) => {
@@ -58,10 +59,13 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 router.post('/poll', authenticate, async (req: AuthRequest, res) => {
   try {
     const userId = req.user.userId;
-    const { projectId, activityId, title, description, durationMin, proposedSlots = [], participantIds = [] } = req.body;
+    const { projectId, activityId, title, description, durationMin, proposedSlots = [], participantIds = [], category = 'OTHER' } = req.body;
 
     if (!(await isProjectMember(userId, projectId))) {
       return res.status(403).json({ error: 'Access denied' });
+    }
+    if (!MEETING_CATEGORIES.includes(category)) {
+      return res.status(400).json({ error: 'Invalid meeting type' });
     }
     if (!title || !Number.isInteger(durationMin) || durationMin <= 0 || proposedSlots.length === 0) {
       return res.status(400).json({ error: 'Title, a positive duration and at least one time slot are required' });
@@ -79,6 +83,7 @@ router.post('/poll', authenticate, async (req: AuthRequest, res) => {
         title,
         description,
         durationMin,
+        category,
         organizerId: userId,
         status: 'DRAFT',
         participants: { create: [...invited].map(id => ({ userId: id })) },

@@ -38,7 +38,7 @@ const TimeWithZones = ({ iso, zones, strong = false }: { iso: string; zones: (st
   );
 };
 
-const emptyForm = { projectId: '', activityId: '', title: '', description: '', durationMin: 30 };
+const emptyForm = { projectId: '', activityId: '', title: '', description: '', durationMin: 30, category: 'OTHER' };
 
 const Meetings = () => {
   const [meetings, setMeetings] = useState<any[]>([]);
@@ -399,17 +399,31 @@ const Meetings = () => {
                   </Form.Group>
                 )}
               </Col>
-              <Col md={8}>
+              <Col md={6}>
                 <Form.Group className="mb-3" controlId="sched-title">
                   <Form.Label className="fw-semibold text-muted small text-uppercase">Meeting Title</Form.Label>
                   <Form.Control type="text" required className="shadow-none" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} />
                 </Form.Group>
               </Col>
-              <Col md={4}>
+              <Col md={3}>
+                <Form.Group className="mb-3" controlId="sched-type">
+                  <Form.Label className="fw-semibold text-muted small text-uppercase">Type</Form.Label>
+                  <Form.Select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
+                    <option value="STRATEGIC">Strategic</option>
+                    <option value="PLANNING">Planning</option>
+                    <option value="REVIEW">Review</option>
+                    <option value="STATUS">Status update</option>
+                    <option value="OTHER">Other</option>
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+              <Col md={3}>
                 <Form.Group className="mb-3" controlId="sched-duration">
                   <Form.Label className="fw-semibold text-muted small text-uppercase">Duration</Form.Label>
                   <Form.Select value={formData.durationMin} onChange={e => setFormData({ ...formData, durationMin: Number(e.target.value) })}>
-                    {[15, 30, 45, 60, 90, 120, 180].map(m => <option key={m} value={m}>{m < 60 ? `${m} min` : `${m / 60} h${m % 60 ? ' 30' : ''}`}</option>)}
+                    {[15, 30, 45, 60, 90, 120, 180].map(m => (
+                      <option key={m} value={m}>{m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`}</option>
+                    ))}
                   </Form.Select>
                 </Form.Group>
               </Col>
