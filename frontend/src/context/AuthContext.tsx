@@ -35,6 +35,15 @@ const IDLE_MINUTES = Number(import.meta.env.VITE_SESSION_IDLE_MINUTES || 30);
 const LOGOUT_REASON_KEY = 'logoutReason';
 
 /** Message to show on the login page after an automatic logout (read once). */
+/** Whether there is a logout message waiting to be shown (without consuming it). */
+export function hasLogoutReason(): boolean {
+  try {
+    return !!sessionStorage.getItem(LOGOUT_REASON_KEY);
+  } catch {
+    return false;
+  }
+}
+
 export function takeLogoutReason(): string {
   try {
     const reason = sessionStorage.getItem(LOGOUT_REASON_KEY) || '';

@@ -13,7 +13,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavClick }) => {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate('/welcome');
   };
 
   return (

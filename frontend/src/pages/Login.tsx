@@ -1,5 +1,6 @@
 import { useState, useContext } from 'react';
-import { Container, Form, Button, Card, Alert } from 'react-bootstrap';
+import { Form, Button, Card, Alert } from 'react-bootstrap';
+import AuthShell from '../components/auth/AuthShell';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext, takeLogoutReason } from '../context/AuthContext';
@@ -81,7 +82,7 @@ const Login = () => {
   };
 
   return (
-    <Container className="d-flex align-items-center justify-content-center" style={{ minHeight: '100vh' }}>
+    <AuthShell>
       <div className="w-100" style={{ maxWidth: '400px' }}>
         <Card>
           <Card.Body>
@@ -153,7 +154,7 @@ const Login = () => {
           </div>
         )}
       </div>
-    </Container>
+    </AuthShell>
   );
 };
 

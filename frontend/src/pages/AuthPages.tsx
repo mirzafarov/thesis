@@ -1,12 +1,13 @@
 // Pages reached from emails: forgot password, reset password (link in email), confirm email (link in email).
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Container, Form, Button, Card, Alert, InputGroup, Spinner } from 'react-bootstrap';
+import { Form, Button, Card, Alert, InputGroup, Spinner } from 'react-bootstrap';
+import AuthShell from '../components/auth/AuthShell';
 import { Link, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 
 const AuthCard = ({ title, children }: { title: string; children: ReactNode }) => (
-  <Container className="d-flex align-items-center justify-content-center" style={{ minHeight: '100vh' }}>
+  <AuthShell>
     <div className="w-100" style={{ maxWidth: '420px' }}>
       <Card>
         <Card.Body className="p-4">
@@ -18,7 +19,7 @@ const AuthCard = ({ title, children }: { title: string; children: ReactNode }) =
         <Link to="/login">Back to log in</Link>
       </div>
     </div>
-  </Container>
+  </AuthShell>
 );
 
 const errorOf = (err: any, fallback: string) => err?.response?.data?.error || fallback;

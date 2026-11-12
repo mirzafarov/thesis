@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Container, Form, Button, Card, Alert, InputGroup } from 'react-bootstrap';
+import { Form, Button, Card, Alert, InputGroup } from 'react-bootstrap';
+import AuthShell from '../components/auth/AuthShell';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import 'react-phone-number-input/style.css';
@@ -70,7 +71,7 @@ const Register = () => {
   const strengthScore = calculateStrength(password);
 
   return (
-    <Container className="d-flex align-items-center justify-content-center py-5" style={{ minHeight: '100vh' }}>
+    <AuthShell>
       <div className="w-100" style={{ maxWidth: '450px' }}>
         <Card className="saas-card border-0 shadow-lg">
           <Card.Body className="p-4 p-md-5">
@@ -162,7 +163,7 @@ const Register = () => {
           Already have an account? <Link to="/login" className="fw-semibold" style={{color: 'var(--primary)'}}>Log In</Link>
         </div>
       </div>
-    </Container>
+    </AuthShell>
   );
 };
 
