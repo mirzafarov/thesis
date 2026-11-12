@@ -5,6 +5,8 @@ import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import ReactMarkdown from 'react-markdown';
 import SlotFinder from '../components/meetings/SlotFinder';
+import { JoinButton, VideoChoice, VideoSettingsModal, providerName } from '../components/meetings/VideoCall';
+import type { VideoMode } from '../components/meetings/VideoCall';
 import { browserTimeZone, formatInZone, otherZonesLine, zoneCity } from '../lib/time';
 
 const MAX_SLOTS = 5;
@@ -44,7 +46,7 @@ const TimeWithZones = ({ iso, zones, strong = false }: { iso: string; zones: (st
   );
 };
 
-const emptyForm = { projectId: '', activityId: '', title: '', description: '', durationMin: 30, category: 'OTHER' };
+const emptyForm = { projectId: '', activityId: '', title: '', description: '', durationMin: 30, category: 'OTHER', video: 'auto' as VideoMode, videoUrl: '' };
 
 const Meetings = () => {
   const [meetings, setMeetings] = useState<any[]>([]);
@@ -58,6 +60,7 @@ const Meetings = () => {
   const [selectedMeetingToFinalize, setSelectedMeetingToFinalize] = useState<any>(null);
   const [finalSlot, setFinalSlot] = useState('');
   const [votes, setVotes] = useState<Record<string, string>>({});
+  const [videoMeeting, setVideoMeeting] = useState<any>(null);
 
   // AI State
   const [showAIModal, setShowAIModal] = useState(false);
@@ -137,6 +140,7 @@ const Meetings = () => {
     try {
       await axios.post('/api/meetings/poll', {
         ...formData,
+        videoUrl: formData.video === 'custom' ? formData.videoUrl : undefined,
         proposedSlots: slots,
         participantIds: members.map((m: any) => m.userId),
       });
@@ -239,6 +243,15 @@ const Meetings = () => {
                       {meeting.startDate ? <TimeWithZones iso={meeting.startDate} zones={zonesOf(meeting)} /> : 'Time not decided yet (poll open)'}
                       <span className="small"> · {meeting.durationMin} min</span>
                     </div>
+                    <div className="small mt-1" style={{ color: 'var(--text-secondary)' }}>
+                      <i className={`bi ${meeting.videoUrl ? 'bi-camera-video' : 'bi-geo-alt'} me-1`} aria-hidden="true"></i>
+                      {meeting.status === 'DRAFT' && meeting.videoProvider === 'auto'
+                        ? 'Online: the video link is created when the time is confirmed'
+                        : providerName(meeting.videoProvider)}
+                      {meeting.organizerId === user?.id && !['COMPLETED', 'CANCELLED'].includes(meeting.status) && (
+                        <Button variant="link" size="sm" className="p-0 ms-2 align-baseline" onClick={() => setVideoMeeting(meeting)}>Change</Button>
+                      )}
+                    </div>
                     {meeting.status === 'DRAFT' && meeting.poll && (
                       <div className="small mt-1" style={{ color: 'var(--text-secondary)' }}>
                         {meeting.poll.voted} of {meeting.participants.length} voted · confirmed automatically at {meeting.poll.majority} "Yes" votes for one time
@@ -250,6 +263,7 @@ const Meetings = () => {
                       {STATUS_LABEL[meeting.status] || meeting.status}
                     </Badge>
                     <div className="d-flex gap-2 justify-content-end">
+                      <JoinButton meeting={meeting} />
                       {canUseAI(meeting) && (
                         <Button variant="outline-primary" size="sm" onClick={() => openAIModal(meeting.id)}>
                           <i className="bi bi-magic me-1" aria-hidden="true"></i> AI Assistant
@@ -435,6 +449,11 @@ const Meetings = () => {
               </Col>
             </Row>
 
+            <div className="mb-3">
+              <VideoChoice idPrefix="sched" mode={formData.video} url={formData.videoUrl}
+                onChange={(video, videoUrl) => setFormData({ ...formData, video, videoUrl })} />
+            </div>
+
             <h6 className="fw-bold text-primary border-bottom pb-2 mb-3">Proposed times ({slots.length}/{MAX_SLOTS})</h6>
 
             <SlotFinder
@@ -471,6 +490,9 @@ const Meetings = () => {
           </Modal.Footer>
         </Form>
       </Modal>
+
+      <VideoSettingsModal meeting={videoMeeting} onHide={() => setVideoMeeting(null)}
+        onSaved={() => { setVideoMeeting(null); setNotice({ variant: 'success', text: 'The video call was updated.' }); fetchData(); }} />
 
       {/* Voting Modal */}
       {selectedPoll && (

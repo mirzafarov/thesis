@@ -7,6 +7,8 @@ import { notifyMeetingConfirmed, notifyMeetingInvitation, notifyMeetingReschedul
 import { authenticate, isProjectMember } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 import { audit } from '../lib/audit';
+import { VIDEO_MODES, createGoogleMeetEvent, providerLabel, videoFor } from '../lib/video';
+import type { VideoMode } from '../lib/video';
 
 const router = express.Router();
 
@@ -59,7 +61,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 router.post('/poll', authenticate, async (req: AuthRequest, res) => {
   try {
     const userId = req.user.userId;
-    const { projectId, activityId, title, description, durationMin, proposedSlots = [], participantIds = [], category = 'OTHER' } = req.body;
+    const { projectId, activityId, title, description, durationMin, proposedSlots = [], participantIds = [], category = 'OTHER', video = 'auto', videoUrl } = req.body;
 
     if (!(await isProjectMember(userId, projectId))) {
       return res.status(403).json({ error: 'Access denied' });
@@ -67,6 +69,11 @@ router.post('/poll', authenticate, async (req: AuthRequest, res) => {
     if (!MEETING_CATEGORIES.includes(category)) {
       return res.status(400).json({ error: 'Invalid meeting type' });
     }
+    if (!VIDEO_MODES.includes(video)) {
+      return res.status(400).json({ error: 'Invalid video call option' });
+    }
+    const videoData = videoFor(video as VideoMode, String(title || ''), videoUrl);
+    if (!videoData) return res.status(400).json({ error: 'The meeting link must be a valid https:// address' });
     if (!title || !Number.isInteger(durationMin) || durationMin <= 0 || proposedSlots.length === 0) {
       return res.status(400).json({ error: 'Title, a positive duration and at least one time slot are required' });
     }
@@ -84,6 +91,7 @@ router.post('/poll', authenticate, async (req: AuthRequest, res) => {
         description,
         durationMin,
         category,
+        ...videoData,
         organizerId: userId,
         status: 'DRAFT',
         participants: { create: [...invited].map(id => ({ userId: id })) },
@@ -209,9 +217,31 @@ async function confirmMeeting(meetingId: string, finalStart: Date) {
   });
   if (claimed.count === 0) return null;
 
-  const meeting = (await prisma.meeting.findUnique({ where: { id: meetingId }, include: { participants: true } }))!;
+  let meeting = (await prisma.meeting.findUnique({ where: { id: meetingId }, include: { participants: true } }))!;
   let synced = 0;
+
+  // "auto" video: try a Google Meet link through the organizer's Google Calendar (this also adds the event there);
+  // otherwise the Jitsi room created with the poll stays.
+  let organizerSynced = false;
+  if (meeting.videoProvider === 'auto') {
+    const meetLink = await createGoogleMeetEvent(meeting.organizerId, {
+      title: meeting.title, description: meeting.description || 'Safe Zone meeting', start: finalStart, end: finalEnd, requestId: meeting.id,
+    });
+    organizerSynced = !!meetLink;
+    if (meetLink) synced++;
+    meeting = await prisma.meeting.update({
+      where: { id: meetingId },
+      data: meetLink ? { videoProvider: 'google_meet', videoUrl: meetLink } : { videoProvider: 'jitsi' },
+      include: { participants: true },
+    });
+  }
+  const label = providerLabel(meeting.videoProvider);
+  const videoLine = meeting.videoUrl ? `
+
+${label}: ${meeting.videoUrl}` : '';
+
   for (const participant of meeting.participants) {
+    if (organizerSynced && participant.userId === meeting.organizerId) continue; // already has the event with the Meet link
     const account = await getGoogleClientForUser(participant.userId);
     if (!account) continue;
     try {
@@ -219,7 +249,8 @@ async function confirmMeeting(meetingId: string, finalStart: Date) {
         calendarId: 'primary',
         requestBody: {
           summary: meeting.title,
-          description: meeting.description || 'Safe Zone meeting',
+          description: (meeting.description || 'Safe Zone meeting') + videoLine,
+          ...(meeting.videoUrl ? { location: meeting.videoUrl } : {}),
           start: { dateTime: finalStart.toISOString() },
           end: { dateTime: finalEnd.toISOString() },
         },
@@ -317,6 +348,43 @@ router.put('/:meetingId/reschedule', authenticate, async (req: AuthRequest, res)
   } catch (error) {
     console.error('Error rescheduling meeting:', error);
     res.status(500).json({ error: 'Failed to reschedule meeting' });
+  }
+});
+
+// Change the video call of a meeting (organizer or project manager): body.video = jitsi | custom | none (+ videoUrl)
+router.put('/:meetingId/video', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const meeting = await prisma.meeting.findUnique({ where: { id: req.params.meetingId! } });
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    const userId = req.user.userId;
+    const membership = await prisma.projectMembership.findUnique({
+      where: { userId_projectId: { userId, projectId: meeting.projectId } },
+    });
+    if (meeting.organizerId !== userId && membership?.role !== 'MANAGER') {
+      return res.status(403).json({ error: 'Only the organizer or a project manager can change the video call' });
+    }
+    if (['COMPLETED', 'CANCELLED'].includes(meeting.status)) {
+      return res.status(400).json({ error: 'This meeting is over' });
+    }
+    const { video, videoUrl } = req.body;
+    // "auto" only makes sense before confirmation (that is when the Google Meet link is created)
+    if (!VIDEO_MODES.includes(video) || (video === 'auto' && meeting.status !== 'DRAFT')) {
+      return res.status(400).json({ error: 'Invalid video call option' });
+    }
+    // Keep an existing room when nothing really changes, so links already sent keep working
+    const keep = video === 'jitsi' && meeting.videoProvider === 'jitsi' && meeting.videoUrl;
+    const data = keep ? { videoProvider: 'jitsi', videoUrl: meeting.videoUrl } : videoFor(video as VideoMode, meeting.title, videoUrl);
+    if (!data) return res.status(400).json({ error: 'The meeting link must be a valid https:// address' });
+
+    const updated = await prisma.meeting.update({ where: { id: meeting.id }, data });
+    await audit(req, {
+      userId, projectId: meeting.projectId, action: 'MEETING_VIDEO_CHANGED',
+      details: `Video call of "${meeting.title}": ${providerLabel(data.videoProvider) ?? 'in person'}.`,
+    });
+    res.json({ videoProvider: updated.videoProvider, videoUrl: updated.videoUrl });
+  } catch (error) {
+    console.error('Error changing the video call:', error);
+    res.status(500).json({ error: 'Failed to change the video call' });
   }
 });
 

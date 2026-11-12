@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { sendEmail } from './mailer';
 import { emails } from './emails';
+import { providerLabel } from './video';
 
 const SCHEDULED = ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'] as const;
 const HOUR = 60 * 60 * 1000;
@@ -40,6 +41,9 @@ const info = (m: LoadedMeeting) => ({
   startDate: m.startDate,
   durationMin: m.durationMin,
   organizerName: fullName(m.organizer),
+  videoUrl: m.videoUrl,
+  // Before confirmation an "auto" meeting may still become Google Meet, so it is just called a video call
+  videoLabel: m.videoProvider === 'auto' ? 'video call' : providerLabel(m.videoProvider),
 });
 
 // Run in the background: the API response does not wait for emails.

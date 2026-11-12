@@ -212,6 +212,10 @@ model Meeting {
   durationMin Int
   category    MeetingCategory @default(OTHER) // used to filter reports, e.g. only strategic meetings
   status      MeetingStatus @default(DRAFT)
+  // Online meeting: "auto" (Jitsi room, upgraded to Google Meet at confirmation when the organizer has Google connected),
+  // "jitsi", "google_meet" or "custom" (e.g. a Zoom/Teams link). null = in person.
+  videoProvider String?
+  videoUrl      String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

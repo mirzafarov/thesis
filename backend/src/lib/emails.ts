@@ -63,7 +63,11 @@ function layout({ to, subject, greetingName, bodyHtml, bodyText, button, footnot
 }
 
 interface Person { email: string; firstName: string; timeZone?: string | null }
-interface MeetingInfo { id: string; title: string; projectName: string; startDate?: Date | null; durationMin: number; organizerName?: string }
+interface MeetingInfo {
+  id: string; title: string; projectName: string; startDate?: Date | null; durationMin: number; organizerName?: string;
+  // Online meetings: the link to join, and the name of the service ("Google Meet", "Jitsi Meet", ...)
+  videoUrl?: string | null; videoLabel?: string | null;
+}
 
 const meetingsUrl = () => `${FRONTEND_URL}/meetings`;
 const detailsHtml = (m: MeetingInfo, tz?: string | null) => `
@@ -74,10 +78,13 @@ const detailsHtml = (m: MeetingInfo, tz?: string | null) => `
       ${m.startDate ? `When: <strong>${esc(formatDateTime(m.startDate, tz))}</strong><br>` : ''}
       Duration: ${m.durationMin} minutes
       ${m.organizerName ? `<br>Organizer: ${esc(m.organizerName)}` : ''}
+      ${m.videoUrl ? `<br>Video call: <a href="${esc(m.videoUrl)}" style="color:#2563EB;font-weight:600">Join on ${esc(m.videoLabel || 'video')}</a><br><span style="font-size:12px;color:#64748B;word-break:break-all">${esc(m.videoUrl)}</span>`
+        : m.videoLabel ? `<br>Online meeting (${esc(m.videoLabel)}): the link comes with the confirmation` : ''}
     </td></tr>
   </table>`;
 const detailsText = (m: MeetingInfo, tz?: string | null) =>
-  [`Meeting: ${m.title}`, `Project: ${m.projectName}`, m.startDate ? `When: ${formatDateTime(m.startDate, tz)}` : '', `Duration: ${m.durationMin} minutes`, m.organizerName ? `Organizer: ${m.organizerName}` : '']
+  [`Meeting: ${m.title}`, `Project: ${m.projectName}`, m.startDate ? `When: ${formatDateTime(m.startDate, tz)}` : '', `Duration: ${m.durationMin} minutes`, m.organizerName ? `Organizer: ${m.organizerName}` : '',
+   m.videoUrl ? `Video call (${m.videoLabel || 'online'}): ${m.videoUrl}` : m.videoLabel ? `Online meeting (${m.videoLabel}): the link comes with the confirmation` : '']
     .filter(Boolean).join('\n');
 
 export const emails = {
@@ -116,10 +123,10 @@ export const emails = {
     subject: `Vote on a time: ${m.title}`,
     greetingName: user.firstName,
     bodyHtml: `<p style="margin:0">${esc(m.organizerName || 'A colleague')} invited you to a meeting. Please vote on the proposed times.</p>
-      ${detailsHtml({ ...m, startDate: null, organizerName: undefined }, user.timeZone)}
+      ${detailsHtml({ ...m, startDate: null, organizerName: undefined, videoUrl: null }, user.timeZone)}
       <p style="margin:0 0 6px"><strong>Proposed times</strong></p>
       <ul style="margin:0;padding-left:20px">${slots.map(s => `<li>${esc(formatDateTime(s, user.timeZone))}</li>`).join('')}</ul>`,
-    bodyText: `${m.organizerName || 'A colleague'} invited you to a meeting. Please vote on the proposed times.\n\n${detailsText({ ...m, startDate: null, organizerName: undefined }, user.timeZone)}\n\nProposed times:\n${slots.map(s => `- ${formatDateTime(s, user.timeZone)}`).join('\n')}`,
+    bodyText: `${m.organizerName || 'A colleague'} invited you to a meeting. Please vote on the proposed times.\n\n${detailsText({ ...m, startDate: null, organizerName: undefined, videoUrl: null }, user.timeZone)}\n\nProposed times:\n${slots.map(s => `- ${formatDateTime(s, user.timeZone)}`).join('\n')}`,
     button: { label: 'Vote now', url: meetingsUrl() },
   }),
 
@@ -147,7 +154,8 @@ export const emails = {
     greetingName: user.firstName,
     bodyHtml: `<p style="margin:0">This is a reminder that your meeting starts in about <strong>${when}</strong>.</p>${detailsHtml(m, user.timeZone)}`,
     bodyText: `This is a reminder that your meeting starts in about ${when}.\n\n${detailsText(m, user.timeZone)}`,
-    button: { label: 'Open meetings', url: meetingsUrl() },
+    // One hour before, the most useful button is the one that joins the call
+    button: m.videoUrl && when === '1 hour' ? { label: 'Join the video call', url: m.videoUrl } : { label: 'Open meetings', url: meetingsUrl() },
   }),
 
   activityDelayed: (
