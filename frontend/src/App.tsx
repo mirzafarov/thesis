@@ -16,6 +16,7 @@ import OAuthSuccess from './pages/OAuthSuccess';
 import { ForgotPassword, ResetPassword, VerifyEmail } from './pages/AuthPages';
 import SetupTwoFactor from './pages/SetupTwoFactor';
 import { AuthContext, AuthProvider } from './context/AuthContext';
+import Landing from './pages/Landing';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useEffect, useContext, lazy, Suspense } from 'react';
 import type { ComponentType } from 'react';
@@ -42,6 +43,7 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
+          <Route path="/home" element={<Landing />} />
           <Route path="/welcome" element={<Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#05060f' }} />}><WelcomePage /></Suspense>} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
