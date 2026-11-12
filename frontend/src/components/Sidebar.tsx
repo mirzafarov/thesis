@@ -46,17 +46,23 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavClick }) => {
         
         {user?.role === 'ADMIN' && (
           <>
+            <NavLink to="/admin" end className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
+              <i className="bi bi-speedometer2 fs-5 me-3" aria-hidden="true"></i> Security Overview
+            </NavLink>
             <NavLink to="/admin/logs" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
-              <i className="bi bi-shield-lock fs-5 me-3"></i> System Logs
+              <i className="bi bi-shield-lock fs-5 me-3" aria-hidden="true"></i> System Logs
             </NavLink>
             <NavLink to="/admin/users" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
-              <i className="bi bi-people fs-5 me-3"></i> User Management
+              <i className="bi bi-people fs-5 me-3" aria-hidden="true"></i> User Management
+            </NavLink>
+            <NavLink to="/admin/settings" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
+              <i className="bi bi-sliders fs-5 me-3" aria-hidden="true"></i> System Settings
             </NavLink>
           </>
         )}
 
         <NavLink to="/profile" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
-          <i className="bi bi-person-gear fs-5 me-3"></i> Settings
+          <i className="bi bi-person-gear fs-5 me-3" aria-hidden="true"></i> {user?.role === 'ADMIN' ? 'My Account' : 'Settings'}
         </NavLink>
       </Nav>
 

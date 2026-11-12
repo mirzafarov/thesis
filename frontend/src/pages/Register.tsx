@@ -6,6 +6,7 @@ import axios from 'axios';
 import 'react-phone-number-input/style.css';
 import PhoneInput from 'react-phone-number-input';
 import { browserTimeZone } from '../lib/time';
+import { usePasswordPolicy, describePolicy, checkPassword } from '../lib/passwordPolicy';
 
 const Register = () => {
   const [firstName, setFirstName] = useState('');
@@ -19,11 +20,12 @@ const Register = () => {
   const [gdprConsent, setGdprConsent] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const policy = usePasswordPolicy();
   const [success, setSuccess] = useState('');
 
   const calculateStrength = (pass: string) => {
     let score = 0;
-    if (pass.length > 7) score += 25;
+    if (pass.length >= policy.minLength) score += 25;
     if (pass.match(/[a-z]/)) score += 25;
     if (pass.match(/[A-Z]/)) score += 25;
     if (pass.match(/[0-9]/) || pass.match(/[^A-Za-z0-9]/)) score += 25;
@@ -45,10 +47,10 @@ const Register = () => {
       return setError('Passwords do not match.');
     }
     
-    // Password Strength Check
-    const strongRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9])(?=.{8,})/;
-    if (!strongRegex.test(password)) {
-      return setError('Password must be at least 8 characters long, contain an uppercase letter, a lowercase letter, a number, and a special character.');
+    // Password rules set by the administrator (checked again on the server)
+    const policyError = checkPassword(policy, password);
+    if (policyError) {
+      return setError(policyError);
     }
     
     if (!gdprConsent) {
@@ -113,6 +115,7 @@ const Register = () => {
 
               <Form.Group id="password" className="mb-3">
                 <Form.Label className="fw-semibold text-secondary small text-uppercase">Password</Form.Label>
+                <Form.Text className="d-block mb-1">{describePolicy(policy)}</Form.Text>
                 <InputGroup>
                   <Form.Control type={showPassword ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)} />
                   <Button variant="outline-secondary" onClick={() => setShowPassword(!showPassword)} style={{ borderColor: 'var(--border)' }}>

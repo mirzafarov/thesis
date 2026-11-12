@@ -5,7 +5,8 @@ import { body, validationResult } from 'express-validator';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { prisma } from '../lib/prisma';
-import { JWT_SECRET, FRONTEND_URL, PRIVACY_POLICY_VERSION, SESSION_IDLE_MINUTES } from '../lib/config';
+import { JWT_SECRET, FRONTEND_URL } from '../lib/config';
+import { getSettings, passwordPolicy, checkPasswordPolicy } from '../lib/settings';
 import { sendEmail } from '../lib/mailer';
 import { emails } from '../lib/emails';
 import { createUserToken, consumeUserToken } from '../lib/tokens';
@@ -25,12 +26,14 @@ const RESET_MINUTES = 30;
 const VERIFY_MINUTES = 24 * 60;
 const MFA_CHALLENGE_MINUTES = 5;
 
-// Brute-force protection: lock out after 5 failed attempts for 15 minutes
+// Brute-force protection, two layers:
+//  1. per account: after N wrong passwords the account is locked for M minutes (settings; an admin can unlock);
+//  2. per network (below): a broad limit that stops one IP address from trying many different accounts.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 failed attempts per IP per window
+  max: 30, // failed attempts per IP per window
   skipSuccessfulRequests: true, // only failed logins count towards the limit
-  message: { error: 'Too many failed login attempts. Your account has been temporarily locked for 15 minutes to prevent brute-force attacks.' },
+  message: { error: 'Too many failed login attempts from this network. Please wait 15 minutes and try again.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -57,16 +60,13 @@ const emailLimiter = rateLimit({
 // Letters (any language), spaces, apostrophes and hyphens only
 const NAME_PATTERN = /^[\p{L}][\p{L} '\-]{0,49}$/u;
 
-const strongPassword = (field: string) =>
-  body(field)
-    .isStrongPassword({ minLength: 8, minLowercase: 1, minUppercase: 1, minNumbers: 1, minSymbols: 1 })
-    .withMessage('Password must be at least 8 characters long and contain an uppercase letter, a lowercase letter, a number, and a special character.');
 
 /**
  * How many times this password appears in known data breaches (HaveIBeenPwned, k-anonymity:
  * only the first 5 characters of the SHA-1 hash leave the server). Returns 0 if the service is unavailable.
  */
 async function breachCount(password: string): Promise<number> {
+  if (!(await getSettings()).checkBreachedPasswords) return 0; // switched off by an administrator
   const hash = crypto.createHash('sha1').update(password).digest('hex').toUpperCase();
   try {
     const res = await fetch(`https://api.pwnedpasswords.com/range/${hash.slice(0, 5)}`);
@@ -101,11 +101,15 @@ const publicUser = (
   mfaSetupRequired,
 });
 
+// The current password rules, so the sign-up and reset forms can show and check them
+router.get('/password-policy', async (_req, res) => {
+  res.json(await passwordPolicy());
+});
+
 // ---------- Registration and email confirmation ----------
 
 router.post('/register', [
   body('email').isEmail().withMessage('Must be a valid email'),
-  strongPassword('password'),
   body('firstName').trim().matches(NAME_PATTERN).withMessage('First name may contain only letters, spaces, apostrophes and hyphens'),
   body('lastName').trim().matches(NAME_PATTERN).withMessage('Last name may contain only letters, spaces, apostrophes and hyphens'),
   body('gdprConsent').equals('true').withMessage('You must agree to the Privacy Policy and GDPR rules to register.'),
@@ -118,6 +122,8 @@ router.post('/register', [
 
     const { email, password, firstName, lastName, phone } = req.body;
 
+    const policyError = await checkPasswordPolicy(password);
+    if (policyError) return res.status(400).json({ error: policyError });
     const breaches = await breachCount(password);
     if (breaches > 0) return res.status(400).json({ error: breachMessage(breaches) });
 
@@ -127,16 +133,17 @@ router.post('/register', [
     }
 
     const passwordHash = await bcrypt.hash(password, await bcrypt.genSalt(10));
+    const { privacyPolicyVersion } = await getSettings();
     const newUser = await prisma.user.create({
       data: {
         email, passwordHash, firstName, lastName, phone,
         // GDPR: record when, and to which version of the rules, the user consented.
         consentAt: new Date(),
-        consentVersion: PRIVACY_POLICY_VERSION,
+        consentVersion: privacyPolicyVersion,
         timeZone: isValidTimeZone(req.body.timeZone) ? req.body.timeZone : null,
       },
     });
-    await audit(req, { userId: newUser.id, action: 'REGISTER', details: `Account created; consented to privacy policy v${PRIVACY_POLICY_VERSION}.` });
+    await audit(req, { userId: newUser.id, action: 'REGISTER', details: `Account created; consented to privacy policy v${privacyPolicyVersion}.` });
 
     // The account can be used once the email address is confirmed.
     await sendVerificationEmail(newUser);
@@ -195,10 +202,10 @@ router.post('/forgot-password', emailLimiter, async (req, res) => {
   }
 });
 
-router.post('/reset-password', [strongPassword('password')], async (req: any, res: any) => {
+router.post('/reset-password', async (req: any, res: any) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ error: errors.array()[0].msg });
+    const policyError = await checkPasswordPolicy(req.body.password);
+    if (policyError) return res.status(400).json({ error: policyError });
 
     const breaches = await breachCount(req.body.password);
     if (breaches > 0) return res.status(400).json({ error: breachMessage(breaches) });
@@ -213,7 +220,8 @@ router.post('/reset-password', [strongPassword('password')], async (req: any, re
     // Opening the link proves the user controls the inbox, so the address also counts as confirmed.
     const user = await prisma.user.update({
       where: { id: userId },
-      data: { passwordHash, emailVerifiedAt: new Date() },
+      // A successful reset also lifts a lockout from wrong passwords (the user proved control of the inbox).
+      data: { passwordHash, emailVerifiedAt: new Date(), failedLoginCount: 0, lockedUntil: null },
     });
     // Anyone who was logged in with the old password is logged out everywhere.
     await revokeAllSessions(userId);
@@ -234,10 +242,43 @@ router.post('/login', loginLimiter, async (req: any, res: any) => {
   try {
     const { email, password } = req.body;
 
+    const settings = await getSettings();
     const user = await prisma.user.findUnique({ where: { email: String(email || '') } });
+
+    // Account temporarily locked after too many wrong passwords
+    if (user?.lockedUntil && user.lockedUntil > new Date()) {
+      const minutes = Math.max(1, Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000));
+      await audit(req, { userId: user.id, action: 'LOGIN_WHILE_LOCKED', details: 'Login attempt while the account was locked.' });
+      return res.status(423).json({
+        error: `Too many failed login attempts. This account is locked for ${minutes} more minute${minutes === 1 ? '' : 's'} to prevent brute-force attacks. You can also reset your password, or ask an administrator to unlock it.`,
+        code: 'ACCOUNT_LOCKED',
+      });
+    }
+
     if (!user || !(await bcrypt.compare(String(password || ''), user.passwordHash))) {
-      if (user) await audit(req, { userId: user.id, action: 'LOGIN_FAILED', details: 'Wrong password.' });
+      if (user) {
+        const count = user.failedLoginCount + 1;
+        if (count >= settings.loginMaxAttempts) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { failedLoginCount: 0, lockedUntil: new Date(Date.now() + settings.loginLockMinutes * 60000) },
+          });
+          await audit(req, { userId: user.id, action: 'ACCOUNT_LOCKED', details: `Locked for ${settings.loginLockMinutes} minutes after ${count} wrong passwords.` });
+        } else {
+          await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: count } });
+          await audit(req, { userId: user.id, action: 'LOGIN_FAILED', details: `Wrong password (${count} of ${settings.loginMaxAttempts}).` });
+        }
+      }
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Blocked by an administrator (only revealed after a correct password)
+    if (user.blockedAt) {
+      await audit(req, { userId: user.id, action: 'LOGIN_BLOCKED', details: 'Login attempt on a blocked account.' });
+      return res.status(403).json({ error: 'This account has been blocked by an administrator. Please contact your system administrator.', code: 'ACCOUNT_BLOCKED' });
+    }
+    if (user.failedLoginCount > 0) {
+      await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: 0 } });
     }
 
     // First login from a browser: remember its time zone (users can change it in Settings).
@@ -289,6 +330,9 @@ router.post('/login/2fa', codeLimiter, async (req: any, res: any) => {
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.totpEnabledAt) return res.status(401).json({ error: 'Invalid credentials' });
+    if (user.blockedAt) {
+      return res.status(403).json({ error: 'This account has been blocked by an administrator. Please contact your system administrator.', code: 'ACCOUNT_BLOCKED' });
+    }
 
     const code = String(req.body.code || '').trim();
     let method = 'authenticator app';
@@ -331,7 +375,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
       twoFactorEnabled: !!user.totpEnabledAt,
       twoFactorRequired: await isTwoFactorRequired(user.id, user.systemRole),
       recoveryCodesLeft: user.totpEnabledAt ? await remainingRecoveryCodes(user.id) : 0,
-      sessionIdleMinutes: SESSION_IDLE_MINUTES,
+      sessionIdleMinutes: (await getSettings()).sessionIdleMinutes,
       timeZone: user.timeZone,
       workdayStart: user.workdayStart,
       workdayEnd: user.workdayEnd,
@@ -350,7 +394,7 @@ router.post('/logout', authenticate, async (req: AuthRequest, res) => {
 
 router.get('/sessions', authenticate, async (req: AuthRequest, res) => {
   const sessions = await prisma.session.findMany({
-    where: activeSessionFilter(req.user.userId),
+    where: await activeSessionFilter(req.user.userId),
     orderBy: { lastSeenAt: 'desc' },
     select: { id: true, ipAddress: true, userAgent: true, createdAt: true, lastSeenAt: true },
   });

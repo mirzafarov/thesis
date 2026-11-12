@@ -27,6 +27,10 @@ model User {
   totpPendingSecret String?             // secret shown during setup, before the first code is confirmed
   totpEnabledAt     DateTime?
   totpLastStep      Int?                // last accepted 30-second step, so a code cannot be reused
+  blockedAt         DateTime?           // blocked by an administrator: cannot log in
+  blockedReason     String?
+  failedLoginCount  Int                 @default(0) // wrong passwords in a row (reset after a successful login)
+  lockedUntil       DateTime?           // temporary lock after too many wrong passwords
   systemRole        SystemRole          @default(USER) // e.g., ADMIN, USER
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
@@ -61,6 +65,14 @@ model Session {
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// System-wide settings changed by administrators (security policy etc.). One row per setting.
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?  // id of the administrator who changed it
 }
 
 // One-time backup codes for two-factor login (only hashes are stored).

@@ -10,6 +10,8 @@ import Reports from './pages/Reports';
 import Profile from './pages/Profile';
 import AdminLogs from './pages/AdminLogs';
 import UserManagement from './pages/UserManagement';
+import AdminOverview from './pages/admin/AdminOverview';
+import AdminSettings from './pages/admin/AdminSettings';
 import OAuthSuccess from './pages/OAuthSuccess';
 import { ForgotPassword, ResetPassword, VerifyEmail } from './pages/AuthPages';
 import SetupTwoFactor from './pages/SetupTwoFactor';
@@ -58,7 +60,9 @@ function App() {
             <Route path="/meetings" element={<Meetings />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/admin" element={<AdminRoute><AdminOverview /></AdminRoute>} />
             <Route path="/admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
+            <Route path="/admin/settings" element={<AdminRoute><AdminSettings /></AdminRoute>} />
             <Route path="/admin/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
           </Route>
         </Routes>

@@ -5,6 +5,7 @@ import { Form, Button, Card, Alert, InputGroup, Spinner } from 'react-bootstrap'
 import AuthShell from '../components/auth/AuthShell';
 import { Link, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
+import { usePasswordPolicy, describePolicy, checkPassword } from '../lib/passwordPolicy';
 
 const AuthCard = ({ title, children }: { title: string; children: ReactNode }) => (
   <AuthShell>
@@ -64,6 +65,7 @@ export const ForgotPassword = () => {
 };
 
 export const ResetPassword = () => {
+  const policy = usePasswordPolicy();
   const [params] = useSearchParams();
   const token = params.get('token') || '';
   const [password, setPassword] = useState('');
@@ -77,6 +79,8 @@ export const ResetPassword = () => {
     e.preventDefault();
     setError('');
     if (password !== confirm) return setError('Passwords do not match.');
+    const policyError = checkPassword(policy, password);
+    if (policyError) return setError(policyError);
     setSaving(true);
     try {
       const res = await axios.post('/api/auth/reset-password', { token, password });
@@ -108,7 +112,7 @@ export const ResetPassword = () => {
               {error.includes('expired') && <> <Link to="/forgot-password">Request a new link</Link>.</>}
             </Alert>
           )}
-          <p className="small text-muted">At least 8 characters, with an uppercase letter, a lowercase letter, a number and a special character.</p>
+          <p className="small text-muted">{describePolicy(policy)}</p>
           <Form.Group controlId="reset-password" className="mb-3">
             <Form.Label>New password</Form.Label>
             <InputGroup>

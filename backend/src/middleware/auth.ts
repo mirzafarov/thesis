@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, SESSION_IDLE_MINUTES } from '../lib/config';
+import { JWT_SECRET } from '../lib/config';
+import { getSettings } from '../lib/settings';
 import { prisma } from '../lib/prisma';
 
 export interface TokenUser {
@@ -40,10 +41,11 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     if (!session || session.userId !== payload.userId || session.revokedAt || session.expiresAt.getTime() < now) {
       return res.status(401).json({ error: 'Your session has ended. Please log in again.', code: 'SESSION_ENDED' });
     }
-    if (now - session.lastSeenAt.getTime() > SESSION_IDLE_MINUTES * 60e3) {
+    const { sessionIdleMinutes } = await getSettings();
+    if (now - session.lastSeenAt.getTime() > sessionIdleMinutes * 60e3) {
       await prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
       return res.status(401).json({
-        error: `You were logged out after ${SESSION_IDLE_MINUTES} minutes of inactivity. Please log in again.`,
+        error: `You were logged out after ${sessionIdleMinutes} minutes of inactivity. Please log in again.`,
         code: 'SESSION_IDLE',
       });
     }

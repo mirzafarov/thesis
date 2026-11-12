@@ -2,11 +2,12 @@ import type { Request } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from './prisma';
 import { clientIp } from './audit';
-import { JWT_SECRET, REQUIRE_2FA_FOR_MANAGERS, SESSION_IDLE_MINUTES, SESSION_MAX_HOURS } from './config';
+import { JWT_SECRET, SESSION_MAX_HOURS } from './config';
+import { getSettings } from './settings';
 
-/** Administrators and project managers must use two-factor login (unless switched off in .env). */
+/** Administrators and project managers must use two-factor login (unless switched off in the admin settings). */
 export async function isTwoFactorRequired(userId: string, systemRole: string) {
-  if (!REQUIRE_2FA_FOR_MANAGERS) return false;
+  if (!(await getSettings()).require2faForManagers) return false;
   if (systemRole === 'ADMIN') return true;
   const managerOf = await prisma.projectMembership.count({ where: { userId, role: 'MANAGER' } });
   return managerOf > 0;
@@ -35,14 +36,14 @@ export async function startSession(
   return { token, sessionId: session.id };
 }
 
-export const idleCutoff = () => new Date(Date.now() - SESSION_IDLE_MINUTES * 60e3);
+export const idleCutoff = (idleMinutes: number) => new Date(Date.now() - idleMinutes * 60e3);
 
 /** Sessions that are still usable: not ended, not expired, active recently. */
-export const activeSessionFilter = (userId: string) => ({
+export const activeSessionFilter = async (userId: string) => ({
   userId,
   revokedAt: null,
   expiresAt: { gt: new Date() },
-  lastSeenAt: { gt: idleCutoff() },
+  lastSeenAt: { gt: idleCutoff((await getSettings()).sessionIdleMinutes) },
 });
 
 export async function revokeAllSessions(userId: string, exceptSessionId?: string) {

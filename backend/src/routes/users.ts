@@ -67,40 +67,6 @@ router.get('/search', authenticate, async (req: AuthRequest, res) => {
 });
 
 
-// Get Audit Logs (ADMIN only)
-router.get('/admin/logs', authenticate, async (req: AuthRequest, res) => {
-  try {
-    if (req.user.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Access forbidden: Admins only' });
-    }
-    const logs = await prisma.auditLog.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: { user: { select: { email: true, firstName: true, lastName: true } } },
-      take: 100
-    });
-    res.json(logs);
-  } catch (err) {
-    console.error('Failed to fetch audit logs', err);
-    res.status(500).json({ error: 'Failed to fetch logs' });
-  }
-});
-
-
-// Get All Users (ADMIN only)
-router.get('/admin/all', authenticate, async (req: AuthRequest, res) => {
-  try {
-    if (req.user.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Access forbidden: Admins only' });
-    }
-    const users = await prisma.user.findMany({
-      select: { id: true, firstName: true, lastName: true, email: true, systemRole: true, createdAt: true },
-      orderBy: { createdAt: 'desc' }
-    });
-    res.json(users);
-  } catch (err) {
-    console.error('Failed to fetch users', err);
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
-});
+// Administrator endpoints live in routes/admin.ts (/api/admin/...).
 
 export default router;

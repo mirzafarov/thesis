@@ -14,7 +14,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (user?.role === 'ADMIN') {
-      navigate('/admin/logs');
+      navigate('/admin');
     }
   }, [user, navigate]);
 
