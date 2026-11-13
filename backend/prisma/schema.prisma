@@ -17,6 +17,7 @@ model User {
   firstName         String
   lastName          String
   phone             String?
+  idCodeEncrypted   String?   // optional personal ID code, stored encrypted (AES-256-GCM) because it is sensitive
   emailVerifiedAt   DateTime?           // set when the user clicks the link in the confirmation email
   consentAt         DateTime?           // when the user accepted the privacy policy / GDPR rules
   consentVersion    String?             // which version of the rules they accepted

@@ -1,5 +1,7 @@
 import express from 'express';
 import { prisma } from '../lib/prisma';
+import { ID_CODE_ERROR, encryptIdCode, parseIdCode } from '../lib/idCode';
+import { audit } from '../lib/audit';
 import { authenticate } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 import { isValidTimeZone } from '../lib/timezones';
@@ -15,6 +17,21 @@ router.post('/me/onboarding', authenticate, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Error saving onboarding state:', error);
     res.status(500).json({ error: 'Failed to save' });
+  }
+});
+
+// Set or remove your personal ID code (optional; stored encrypted)
+router.put('/me/id-code', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const idCode = parseIdCode(req.body.idCode);
+    if (idCode === undefined) return res.status(400).json({ error: ID_CODE_ERROR });
+    await prisma.user.update({ where: { id: req.user.userId }, data: { idCodeEncrypted: encryptIdCode(idCode) } });
+    // The code itself is never written to the log
+    await audit(req, { userId: req.user.userId, action: 'PROFILE_UPDATED', details: idCode ? 'Personal ID code saved.' : 'Personal ID code removed.' });
+    res.json({ idCode });
+  } catch (error) {
+    console.error('Error saving the ID code:', error);
+    res.status(500).json({ error: 'Failed to save the ID code' });
   }
 });
 

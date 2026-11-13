@@ -8,9 +8,11 @@ import SlotFinder from '../components/meetings/SlotFinder';
 import { JoinButton, VideoChoice, VideoSettingsModal, providerName } from '../components/meetings/VideoCall';
 import type { VideoMode } from '../components/meetings/VideoCall';
 import { ActionItemsModal } from '../components/meetings/ActionItems';
+import { AiReplyModal, CopyButton, LANGUAGE_OPTIONS } from '../components/meetings/AiReply';
 import { browserTimeZone, formatInZone, otherZonesLine, zoneCity } from '../lib/time';
 
 const MAX_SLOTS = 5;
+const CATEGORY_NAMES: Record<string, string> = { STRATEGIC: 'Strategic', PLANNING: 'Planning', REVIEW: 'Review', STATUS: 'Status update', OTHER: 'Other' };
 const isScheduled = (m: any) => ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'].includes(m.status);
 // The AI assistant also helps after a meeting (e.g. writing the minutes).
 const canUseAI = (m: any) => isScheduled(m) || ['IN_PROGRESS', 'COMPLETED'].includes(m.status);
@@ -51,6 +53,8 @@ const emptyForm = { projectId: '', activityId: '', title: '', description: '', d
 
 const Meetings = () => {
   const [meetings, setMeetings] = useState<any[]>([]);
+  // Search and filters for the meeting history (done in the browser: the list only contains the user's own projects)
+  const [search, setSearch] = useState({ text: '', projectId: '', when: 'all', category: '', from: '', to: '' });
   const [pendingPolls, setPendingPolls] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [notice, setNotice] = useState<{ variant: string; text: string } | null>(null);
@@ -69,6 +73,8 @@ const Meetings = () => {
   const [selectedMeetingId, setSelectedMeetingId] = useState('');
   const [aiPrompt, setAiPrompt] = useState('');
   const [draftType, setDraftType] = useState('AGENDA');
+  const [aiLanguage, setAiLanguage] = useState('en');
+  const [replyMeeting, setReplyMeeting] = useState<any>(null);
   const [generatedDraft, setGeneratedDraft] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -196,7 +202,7 @@ const Meetings = () => {
     setIsGenerating(true);
     setGeneratedDraft('');
     try {
-      const res = await axios.post('/api/ai/generate', { meetingId: selectedMeetingId, draftType, prompt: aiPrompt });
+      const res = await axios.post('/api/ai/generate', { meetingId: selectedMeetingId, draftType, prompt: aiPrompt, language: aiLanguage });
       setGeneratedDraft(res.data.content);
     } catch (err: any) {
       setGeneratedDraft(err.response?.data?.error || 'Failed to generate content');
@@ -227,6 +233,31 @@ const Meetings = () => {
     }
   };
 
+  // ---- Meeting history filters ----
+  const dayKey = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const visibleMeetings = meetings.filter(m => {
+    const now = Date.now();
+    const ended = m.status === 'COMPLETED' || (isScheduled(m) && new Date(m.endDate ?? m.startDate).getTime() < now);
+    if (search.when === 'upcoming' && !(isScheduled(m) && !ended)) return false;
+    if (search.when === 'voting' && m.status !== 'DRAFT') return false;
+    if (search.when === 'past' && !ended) return false;
+    if (search.projectId && m.project.id !== search.projectId) return false;
+    if (search.category && m.category !== search.category) return false;
+    if ((search.from || search.to) && !m.startDate) return false; // undecided polls have no date
+    if (search.from && dayKey(m.startDate) < search.from) return false;
+    if (search.to && dayKey(m.startDate) > search.to) return false;
+    const text = search.text.trim().toLowerCase();
+    if (text) {
+      const haystack = [m.title, m.description, m.project.name, ...(m.participants || []).map((p: any) => `${p.user?.firstName} ${p.user?.lastName}`)]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!text.split(/\s+/).every(word => haystack.includes(word))) return false;
+    }
+    return true;
+  });
+
   const zonesOf = (meeting: any) => (meeting.participants || []).map((p: any) => p.user?.timeZone);
 
   return (
@@ -246,10 +277,62 @@ const Meetings = () => {
       <Row>
         <Col lg={8}>
           <h5 className="mb-3 text-secondary">Your Meetings</h5>
+          {meetings.length > 0 && (
+            <Card className="border-0 shadow-sm mb-3">
+              <Card.Body className="py-3">
+                <Row className="g-2 align-items-end">
+                  <Col md={4}>
+                    <Form.Label className="small fw-semibold mb-1" htmlFor="ms-text">Search</Form.Label>
+                    <Form.Control id="ms-text" size="sm" type="search" placeholder="Title, topic or participant…" value={search.text}
+                      onChange={e => setSearch({ ...search, text: e.target.value })} />
+                  </Col>
+                  <Col xs={6} md={4}>
+                    <Form.Label className="small fw-semibold mb-1" htmlFor="ms-project">Project</Form.Label>
+                    <Form.Select id="ms-project" size="sm" value={search.projectId} onChange={e => setSearch({ ...search, projectId: e.target.value })}>
+                      <option value="">All projects</option>
+                      {[...new Map(meetings.map(m => [m.project.id, m.project.name])).entries()].map(([pid, name]) => <option key={pid} value={pid}>{name}</option>)}
+                    </Form.Select>
+                  </Col>
+                  <Col xs={6} md={4}>
+                    <Form.Label className="small fw-semibold mb-1" htmlFor="ms-when">Show</Form.Label>
+                    <Form.Select id="ms-when" size="sm" value={search.when} onChange={e => setSearch({ ...search, when: e.target.value })}>
+                      <option value="all">All meetings</option>
+                      <option value="upcoming">Upcoming</option>
+                      <option value="voting">Voting in progress</option>
+                      <option value="past">Past (held)</option>
+                    </Form.Select>
+                  </Col>
+                  <Col xs={6} md={4}>
+                    <Form.Label className="small fw-semibold mb-1" htmlFor="ms-type">Type</Form.Label>
+                    <Form.Select id="ms-type" size="sm" value={search.category} onChange={e => setSearch({ ...search, category: e.target.value })}>
+                      <option value="">All types</option>
+                      {Object.entries(CATEGORY_NAMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </Form.Select>
+                  </Col>
+                  <Col xs={6} md={3}>
+                    <Form.Label className="small fw-semibold mb-1" htmlFor="ms-from">From</Form.Label>
+                    <Form.Control id="ms-from" size="sm" type="date" value={search.from} onChange={e => setSearch({ ...search, from: e.target.value })} />
+                  </Col>
+                  <Col xs={6} md={3}>
+                    <Form.Label className="small fw-semibold mb-1" htmlFor="ms-to">To</Form.Label>
+                    <Form.Control id="ms-to" size="sm" type="date" min={search.from || undefined} value={search.to} onChange={e => setSearch({ ...search, to: e.target.value })} />
+                  </Col>
+                  <Col xs={6} md={2} className="d-grid">
+                    <Button size="sm" variant="outline-secondary" onClick={() => setSearch({ text: '', projectId: '', when: 'all', category: '', from: '', to: '' })}>Clear</Button>
+                  </Col>
+                </Row>
+                <div className="small mt-2" style={{ color: 'var(--text-secondary)' }} aria-live="polite">
+                  Showing {visibleMeetings.length} of {meetings.length} meeting{meetings.length === 1 ? '' : 's'}
+                </div>
+              </Card.Body>
+            </Card>
+          )}
           {meetings.length === 0 ? (
             <Card className="border-0 shadow-sm"><Card.Body className="text-center text-muted p-5">No meetings found. Schedule one to get started!</Card.Body></Card>
+          ) : visibleMeetings.length === 0 ? (
+            <Card className="border-0 shadow-sm"><Card.Body className="text-center text-muted p-4">No meetings match your search.</Card.Body></Card>
           ) : (
-            meetings.map(meeting => (
+            visibleMeetings.map(meeting => (
               <Card key={meeting.id} className="mb-3 border-0 shadow-sm custom-hover-card">
                 <Card.Body className="d-flex flex-wrap gap-2 justify-content-between align-items-center">
                   <div>
@@ -325,6 +408,9 @@ const Meetings = () => {
                   <Button variant="warning" size="sm" className="w-100 text-dark fw-semibold" onClick={() => handleOpenVote(poll)}>
                     <i className="bi bi-ui-radios me-1" aria-hidden="true"></i> Vote on Proposed Times
                   </Button>
+                  <Button variant="outline-primary" size="sm" className="w-100 mt-2" onClick={() => setReplyMeeting({ id: poll.meeting.id ?? poll.id, title: poll.meeting.title })}>
+                    <i className="bi bi-reply me-1" aria-hidden="true"></i> AI reply to the organizer
+                  </Button>
                 </Card.Body>
               </Card>
             ))
@@ -348,6 +434,12 @@ const Meetings = () => {
                     <option value="INVITATION">Email Invitation</option>
                     <option value="REMINDER">Reminder</option>
                     <option value="SUMMARY">Meeting Summary</option>
+                  </Form.Select>
+                </Form.Group>
+                <Form.Group className="mb-3" controlId="ai-language">
+                  <Form.Label className="fw-semibold text-muted small text-uppercase">Language</Form.Label>
+                  <Form.Select value={aiLanguage} onChange={e => setAiLanguage(e.target.value)} className="shadow-none">
+                    {LANGUAGE_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </Form.Select>
                 </Form.Group>
               </Col>
@@ -375,7 +467,11 @@ const Meetings = () => {
 
           {generatedDraft && (
             <div className="mt-4 p-4 rounded shadow-sm border">
-              <h6 className="text-primary fw-bold mb-3 border-bottom pb-2">Generated {draftType}</h6>
+              <div className="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+                <h6 className="text-primary fw-bold mb-0">Generated {draftType.toLowerCase()}</h6>
+                <CopyButton text={generatedDraft} />
+              </div>
+              <p className="small" style={{ color: 'var(--text-secondary)' }}>The AI used this meeting's real details (time in your time zone, people, video link, to-dos). Always check the text before sending it.</p>
               <div className="markdown-body" style={{ fontSize: '0.95rem' }}>
                 <ReactMarkdown>{generatedDraft}</ReactMarkdown>
               </div>
@@ -520,6 +616,8 @@ const Meetings = () => {
           </Modal.Footer>
         </Form>
       </Modal>
+
+      <AiReplyModal meeting={replyMeeting} onHide={() => setReplyMeeting(null)} />
 
       <ActionItemsModal meeting={todoMeeting} onHide={() => setTodoMeeting(null)} onChanged={fetchData} />
 

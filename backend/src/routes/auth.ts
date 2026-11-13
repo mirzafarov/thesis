@@ -11,6 +11,7 @@ import { sendEmail } from '../lib/mailer';
 import { emails } from '../lib/emails';
 import { createUserToken, consumeUserToken } from '../lib/tokens';
 import { audit, clientIp } from '../lib/audit';
+import { ID_CODE_ERROR, encryptIdCode, parseIdCode, readIdCode } from '../lib/idCode';
 import { startSession, isTwoFactorRequired, activeSessionFilter, revokeAllSessions } from '../lib/sessions';
 import {
   createPendingSecret, verifyPendingCode, verifyLoginCode,
@@ -121,6 +122,8 @@ router.post('/register', [
     }
 
     const { email, password, firstName, lastName, phone } = req.body;
+    const idCode = parseIdCode(req.body.idCode);
+    if (idCode === undefined) return res.status(400).json({ error: ID_CODE_ERROR });
 
     const policyError = await checkPasswordPolicy(password);
     if (policyError) return res.status(400).json({ error: policyError });
@@ -137,6 +140,7 @@ router.post('/register', [
     const newUser = await prisma.user.create({
       data: {
         email, passwordHash, firstName, lastName, phone,
+        idCodeEncrypted: encryptIdCode(idCode),
         // GDPR: record when, and to which version of the rules, the user consented.
         consentAt: new Date(),
         consentVersion: privacyPolicyVersion,
@@ -370,6 +374,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
     res.json({
       ...publicUser(user, req.user.mfaSetupRequired),
       phone: user.phone,
+      idCode: readIdCode(user.idCodeEncrypted),
       consentAt: user.consentAt,
       consentVersion: user.consentVersion,
       twoFactorEnabled: !!user.totpEnabledAt,
@@ -517,6 +522,7 @@ router.get('/me/export', authenticate, async (req: AuthRequest, res) => {
         firstName: true,
         lastName: true,
         phone: true,
+        idCodeEncrypted: true,
         systemRole: true,
         consentAt: true,
         consentVersion: true,
@@ -536,7 +542,9 @@ router.get('/me/export', authenticate, async (req: AuthRequest, res) => {
       }
     });
     await audit(req, { userId: req.user.userId, action: 'DATA_EXPORTED', details: 'User downloaded their personal data (GDPR).' });
-    res.json(user);
+    // The ID code is exported readable (it is the user's own data), not in its encrypted form
+    const { idCodeEncrypted, ...rest } = user!;
+    res.json({ ...rest, idCode: readIdCode(idCodeEncrypted) });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to export data' });

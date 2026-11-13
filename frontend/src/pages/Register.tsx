@@ -13,6 +13,7 @@ const Register = () => {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [idCode, setIdCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -60,7 +61,7 @@ const Register = () => {
     setLoading(true);
     try {
       const res = await axios.post('/api/auth/register', {
-        firstName, lastName, email, phone, password, gdprConsent, timeZone: browserTimeZone()
+        firstName, lastName, email, phone, idCode, password, gdprConsent, timeZone: browserTimeZone()
       });
       setSuccess(res.data.message);
     } catch (err: any) {
@@ -111,6 +112,13 @@ const Register = () => {
                   onChange={(val) => setPhone(val || '')}
                   className="PhoneInput"
                 />
+              </Form.Group>
+
+              <Form.Group controlId="reg-idcode" className="mb-3">
+                <Form.Label className="fw-semibold text-secondary small text-uppercase">Personal ID code (Optional)</Form.Label>
+                <Form.Control value={idCode} maxLength={20} autoComplete="off" pattern="[A-Za-z0-9\-]{4,20}"
+                  aria-describedby="reg-idcode-help" onChange={e => setIdCode(e.target.value)} />
+                <Form.Text id="reg-idcode-help">Stored encrypted and only visible to you.</Form.Text>
               </Form.Group>
 
               <Form.Group id="password" className="mb-3">

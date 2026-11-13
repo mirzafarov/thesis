@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Container, Card, Row, Col, Button, ListGroup, Form, Modal, Alert, ButtonGroup } from 'react-bootstrap';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
+import ProjectLog from '../components/ProjectLog';
 import GanttChart from '../components/gantt/GanttChart';
 import type { GanttActivity, GanttItem, GanttPhase } from '../components/gantt/GanttChart';
 import { dayToISO, isoToInput, formatDayLong, toDay } from '../components/gantt/dates';
@@ -532,6 +533,9 @@ const ProjectDetails = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* Project log: managers only */}
+      {isManager && <ProjectLog projectId={project.id} members={project.members} />}
 
       {/* Activity modal */}
       <Modal show={!!activityForm} onHide={() => setActivityForm(null)} centered>

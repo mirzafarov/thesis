@@ -32,6 +32,8 @@ export interface GanttActivity {
   meetings?: GanttMeeting[];
   /** Activities that must finish before this one starts (finish-to-start dependencies) */
   dependsOn?: string[];
+  /** To-dos from this activity's meetings: progress is drawn inside the bar */
+  todos?: { total: number; done: number };
 }
 
 export type GanttItem = { kind: 'phase'; item: GanttPhase } | { kind: 'activity'; item: GanttActivity };
@@ -275,11 +277,12 @@ export default function GanttChart({ phases, activities, readOnly, onMove, onOpe
     const name = t.kind === 'phase' ? `${t.item.isMilestone ? 'Milestone' : 'Phase'} ${t.item.name}` : `Activity ${t.item.title}`;
     const when = span ? (span[0] === span[1] ? formatDayLong(span[0]) : `${formatDayLong(span[0])} to ${formatDayLong(span[1])}`) : 'no dates';
     const status = t.kind === 'activity' ? `, ${STATUS_LABEL[t.item.status]}${isOverdue(t.item, today) ? ', overdue' : ''}` : '';
+    const todo = t.kind === 'activity' && t.item.todos?.total ? `, ${t.item.todos.done} of ${t.item.todos.total} to-dos done` : '';
     const after = t.kind === 'activity' && t.item.dependsOn?.length
       ? `, starts after ${t.item.dependsOn.map(id => activities.find(a => a.id === id)?.title).filter(Boolean).join(' and ')}`
       : '';
     const hint = readOnly ? 'Press Enter for details.' : 'Arrow keys move it by a day, Shift plus arrow keys change the end date, Enter edits.';
-    return `${name}, ${when}${status}${after}. ${hint}`;
+    return `${name}, ${when}${status}${todo}${after}. ${hint}`;
   };
 
   const renderBar = (t: GanttItem) => {
@@ -333,13 +336,20 @@ export default function GanttChart({ phases, activities, readOnly, onMove, onOpe
 
     const a = t.item;
     const overdue = isOverdue(a, today);
+    const todos = a.todos && a.todos.total > 0 ? a.todos : null;
     return (
       <div
         {...common}
         className={`gantt-bar activity status-${a.status.toLowerCase()}${overdue ? ' overdue' : ''}${readOnly ? '' : ' draggable'}`}
         style={{ left, width: barWidth }}
       >
-        {barWidth > 60 && <span className="gantt-bar-text">{a.title}</span>}
+        {/* Thin strip along the bottom: how many of the linked meetings' to-dos are done */}
+        {todos && (
+          <span className="gantt-progress" aria-hidden="true">
+            <span style={{ width: `${Math.round((todos.done / todos.total) * 100)}%` }} />
+          </span>
+        )}
+        {barWidth > 60 && <span className="gantt-bar-text">{a.title}{todos && barWidth > 120 ? ` · ${todos.done}/${todos.total} to-dos` : ''}</span>}
         {handles}
       </div>
     );
@@ -519,6 +529,7 @@ export default function GanttChart({ phases, activities, readOnly, onMove, onOpe
         <span><span className="gantt-swatch overdue" /> Overdue</span>
         <span><i className="bi bi-people-fill" aria-hidden="true" /> Meeting</span>
         <span><span className="gantt-swatch today" /> Today</span>
+        <span><span className="gantt-swatch progress" /> To-dos done</span>
         <span><i className="bi bi-arrow-right" aria-hidden="true" /> Starts after</span>
         <span className="text-danger"><i className="bi bi-arrow-right" aria-hidden="true" /> Date conflict</span>
       </div>

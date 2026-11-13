@@ -35,9 +35,13 @@ export const ACTION_GROUPS: Record<string, string[]> = {
   accounts: ['REGISTER', 'EMAIL_VERIFIED', 'DATA_EXPORTED', 'DELETE_ACCOUNT', 'PASSWORD_RESET', 'PASSWORD_RESET_REQUESTED'],
   projects: [
     'PROJECT_CREATED', 'PROJECT_UPDATED', 'PROJECT_DELETED', 'PHASE_CREATED', 'PHASE_UPDATED', 'PHASE_DELETED',
-    'ACTIVITY_CREATED', 'ACTIVITY_UPDATED', 'ACTIVITY_DELETED', 'MEMBER_ADDED', 'MEMBER_REMOVED', 'MEMBER_ROLE_CHANGED',
+    'ACTIVITY_CREATED', 'ACTIVITY_UPDATED', 'ACTIVITY_DELETED', 'ACTIVITY_DEPENDENCIES_CHANGED',
+    'MEMBER_ADDED', 'MEMBER_REMOVED', 'MEMBER_ROLE_CHANGED',
   ],
-  meetings: ['MEETING_POLL_CREATED', 'MEETING_CONFIRMED', 'MEETING_AUTO_CONFIRMED', 'MEETING_RESCHEDULED'],
+  meetings: [
+    'MEETING_POLL_CREATED', 'MEETING_CONFIRMED', 'MEETING_AUTO_CONFIRMED', 'MEETING_RESCHEDULED', 'MEETING_VIDEO_CHANGED',
+    'ACTION_ITEM_CREATED', 'ACTION_ITEM_UPDATED', 'ACTION_ITEM_DELETED',
+  ],
   reports: ['REPORT_EXPORTED', 'DATA_EXPORTED'],
   admin: [
     'ADMIN_USER_BLOCKED', 'ADMIN_USER_UNBLOCKED', 'ADMIN_USER_UNLOCKED', 'ADMIN_ROLE_CHANGED', 'ADMIN_SESSIONS_REVOKED',
@@ -118,7 +122,8 @@ router.get('/overview', async (_req, res) => {
 
 // ---------- Audit log ----------
 
-function logFilter(q: Record<string, unknown>): Prisma.AuditLogWhereInput {
+/** Search / type / person / IP / date filter for audit logs (also used by the project log for managers). */
+export function logFilter(q: Record<string, unknown>): Prisma.AuditLogWhereInput {
   const and: Prisma.AuditLogWhereInput[] = [];
   const text = typeof q.q === 'string' ? q.q.trim().slice(0, 100) : '';
   if (text) {

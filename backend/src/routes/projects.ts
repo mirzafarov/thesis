@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { authenticate, getMembership, isProjectManager } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 import { audit } from '../lib/audit';
+import { logFilter } from './admin';
 
 const router = express.Router();
 
@@ -118,7 +119,9 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
           orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
           include: {
             responsible: { select: { id: true, firstName: true, lastName: true } },
-            meetings: { select: { id: true, title: true, startDate: true, endDate: true, status: true } },
+            meetings: {
+              select: { id: true, title: true, startDate: true, endDate: true, status: true, actionItems: { select: { doneAt: true } } },
+            },
             predecessors: { select: { predecessorId: true } },
           },
         },
@@ -129,7 +132,16 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
     // Dependencies as a simple list of ids: dependsOn = activities that must finish first
     res.json({
       ...project,
-      activities: project.activities.map(({ predecessors, ...a }) => ({ ...a, dependsOn: predecessors.map(p => p.predecessorId) })),
+      activities: project.activities.map(({ predecessors, meetings, ...a }) => {
+        // To-dos agreed in this activity's meetings: their progress is shown on the activity's Gantt bar
+        const todos = meetings.flatMap(m => m.actionItems);
+        return {
+          ...a,
+          meetings: meetings.map(({ actionItems, ...m }) => m),
+          dependsOn: predecessors.map(p => p.predecessorId),
+          todos: { total: todos.length, done: todos.filter(t => t.doneAt).length },
+        };
+      }),
     });
   } catch (error) {
     handleError(res, error, 'Failed to fetch project');
@@ -279,6 +291,40 @@ router.post('/:id/activities', authenticate, async (req: AuthRequest, res) => {
     handleError(res, error, 'Failed to create activity');
   }
 });
+
+/**
+ * Project log for the project's managers: everything recorded about this project (plan changes, meetings,
+ * to-dos, members, report exports) with search and filters. IP addresses are left out: managers do not need them.
+ * Query: q, group (projects | meetings | reports), userId, from, to (YYYY-MM-DD), page.
+ */
+router.get('/:id/logs', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const projectId = req.params.id!;
+    if (!(await isProjectManager(req.user.userId, projectId))) {
+      return res.status(403).json({ error: 'Only project managers can see the project log' });
+    }
+    const query = { ...(req.query as Record<string, unknown>) };
+    delete query.ip; // no filtering by IP either
+    if (typeof query.group === 'string' && !PROJECT_LOG_GROUPS.includes(query.group)) delete query.group;
+    const where = { AND: [{ projectId }, logFilter(query)] };
+    const pageSize = 30;
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const [total, items] = await Promise.all([
+      prisma.auditLog.count({ where }),
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: { id: true, action: true, details: true, createdAt: true, user: { select: { id: true, firstName: true, lastName: true } } },
+      }),
+    ]);
+    res.json({ total, page, pageSize, items });
+  } catch (error) {
+    handleError(res, error, 'Failed to load the project log');
+  }
+});
+const PROJECT_LOG_GROUPS = ['projects', 'meetings', 'reports'];
 
 /**
  * Set which activities must finish before this one starts (managers only). body.dependsOn = [activityId, ...]

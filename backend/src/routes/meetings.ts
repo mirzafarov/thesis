@@ -10,6 +10,7 @@ import { audit } from '../lib/audit';
 import { VIDEO_MODES, createGoogleMeetEvent, providerLabel, videoFor } from '../lib/video';
 import type { VideoMode } from '../lib/video';
 import { icsAttachment } from '../lib/ics';
+import { isAiLanguage, meetingContext, writingRules } from '../lib/aiContext';
 
 const router = express.Router();
 
@@ -419,27 +420,32 @@ router.get('/:meetingId/ics', authenticate, async (req: AuthRequest, res) => {
   }
 });
 
-// Generate an AI email reply (accept/decline) to a meeting invitation
+// AI reply to a meeting invitation (accept / decline), written to the organizer.
+// body: { responseType: 'ACCEPT' | 'DECLINE', language?: 'en' | 'lt', note?: e.g. "I can only join for 30 minutes" }
 router.post('/:id/email-draft', authenticate, async (req: AuthRequest, res) => {
   try {
     const { responseType } = req.body;
+    const language = req.body.language ?? 'en';
+    const note = typeof req.body.note === 'string' ? req.body.note.trim().slice(0, 1000) : '';
     if (!['ACCEPT', 'DECLINE'].includes(responseType)) {
       return res.status(400).json({ error: 'responseType must be ACCEPT or DECLINE' });
     }
+    if (!isAiLanguage(language)) return res.status(400).json({ error: 'Language must be English or Lithuanian' });
     if (!isAiConfigured()) {
       return res.status(500).json({ error: 'Gemini API key is not configured on the server.' });
     }
 
-    const meeting = await prisma.meeting.findUnique({
-      where: { id: req.params.id! },
-      include: { organizer: true, participants: true },
-    });
-    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
-    if (!meeting.participants.some(p => p.userId === req.user.userId)) {
+    const context = await meetingContext(req.params.id!, req.user.userId);
+    if (!context) return res.status(404).json({ error: 'Meeting not found' });
+    if (!context.meeting.participants.some(p => p.userId === req.user.userId)) {
       return res.status(403).json({ error: 'You are not invited to this meeting' });
     }
 
-    const prompt = `Write a professional, polite email to ${meeting.organizer.firstName} ${meeting.organizer.lastName} regarding the meeting "${meeting.title}". I want to ${responseType.toLowerCase()} this invitation. Keep it concise.`;
+    const me = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { firstName: true, lastName: true } });
+    const prompt = `You help ${me?.firstName} ${me?.lastName} reply to a meeting invitation from ${context.meeting.organizer.firstName} ${context.meeting.organizer.lastName}. ` +
+      `Write a short, professional, polite email that ${responseType === 'ACCEPT' ? 'accepts' : 'declines'} the invitation.\n\n` +
+      `Meeting details:\n${context.text}\n\n${writingRules(language)}` +
+      (note ? `\n\nThe reply should also mention: ${note}` : '');
     res.json({ draft: await generateText(prompt) });
   } catch (error) {
     console.error('Failed to generate AI email draft:', error);

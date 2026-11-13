@@ -11,6 +11,7 @@ interface Me {
   firstName: string;
   lastName: string;
   phone: string | null;
+  idCode: string | null;
   role: string;
   consentAt: string | null;
   consentVersion: string | null;
@@ -24,6 +25,42 @@ interface Me {
 }
 
 /** Time zone and working hours: used to find meeting times that suit everyone. */
+// Optional personal ID code: stored encrypted on the server, shown only to the user themself.
+const IdCodeEditor = ({ current, onSaved }: { current: string | null; onSaved: () => void }) => {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(current ?? '');
+  const [error, setError] = useState('');
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await axios.put('/api/users/me/id-code', { idCode: value });
+      setEditing(false);
+      setError('');
+      onSaved();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Could not save.');
+    }
+  };
+  if (!editing) {
+    return (
+      <span>
+        {current || '—'}{' '}
+        <Button variant="link" size="sm" className="p-0 ms-1 align-baseline" onClick={() => { setValue(current ?? ''); setEditing(true); }}>{current ? 'Change' : 'Add'}</Button>
+      </span>
+    );
+  }
+  return (
+    <Form onSubmit={save} className="d-flex flex-wrap gap-2 align-items-start">
+      <Form.Control size="sm" style={{ maxWidth: 200 }} value={value} maxLength={20} autoComplete="off" aria-label="Personal ID code"
+        isInvalid={!!error} onChange={e => setValue(e.target.value)} />
+      <Button size="sm" type="submit">Save</Button>
+      <Button size="sm" variant="outline-secondary" onClick={() => setEditing(false)}>Cancel</Button>
+      {error && <div className="w-100 text-danger small" role="alert">{error}</div>}
+      <div className="w-100 small" style={{ color: 'var(--text-secondary)' }}>Leave empty to remove it. Stored encrypted.</div>
+    </Form>
+  );
+};
+
 const WorkingHoursCard = ({ me, onSaved }: { me: Me; onSaved: () => void }) => {
   const [tz, setTz] = useState(me.timeZone || browserTimeZone());
   const [start, setStart] = useState(me.workdayStart);
@@ -311,6 +348,8 @@ const Profile = () => {
                   <dt className="col-sm-4">Name</dt><dd className="col-sm-8">{me.firstName} {me.lastName}</dd>
                   <dt className="col-sm-4">Email</dt><dd className="col-sm-8">{me.email}</dd>
                   <dt className="col-sm-4">Phone</dt><dd className="col-sm-8">{me.phone || '—'}</dd>
+                  <dt className="col-sm-4">Personal ID code</dt>
+                  <dd className="col-sm-8"><IdCodeEditor current={me.idCode} onSaved={load} /></dd>
                   <dt className="col-sm-4">Privacy consent</dt>
                   <dd className="col-sm-8">{me.consentAt ? `Version ${me.consentVersion}, accepted ${when(me.consentAt)}` : 'Accepted before consent tracking was introduced'}</dd>
                 </dl>
