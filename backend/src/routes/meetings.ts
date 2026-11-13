@@ -9,6 +9,7 @@ import type { AuthRequest } from '../middleware/auth';
 import { audit } from '../lib/audit';
 import { VIDEO_MODES, createGoogleMeetEvent, providerLabel, videoFor } from '../lib/video';
 import type { VideoMode } from '../lib/video';
+import { icsAttachment } from '../lib/ics';
 
 const router = express.Router();
 
@@ -387,6 +388,34 @@ router.put('/:meetingId/video', authenticate, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Error changing the video call:', error);
     res.status(500).json({ error: 'Failed to change the video call' });
+  }
+});
+
+// Download a scheduled meeting as an .ics calendar file (participants only)
+router.get('/:meetingId/ics', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const meeting = await prisma.meeting.findUnique({
+      where: { id: req.params.meetingId! },
+      include: { participants: { select: { userId: true } }, project: { select: { name: true } }, organizer: { select: { firstName: true, lastName: true } } },
+    });
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (!meeting.participants.some(p => p.userId === req.user.userId)) {
+      return res.status(403).json({ error: 'You are not invited to this meeting' });
+    }
+    if (!meeting.startDate || !meeting.endDate || meeting.status === 'CANCELLED') {
+      return res.status(400).json({ error: 'The meeting time is not decided yet' });
+    }
+    const file = icsAttachment({
+      id: meeting.id, title: meeting.title, description: meeting.description, startDate: meeting.startDate, endDate: meeting.endDate,
+      updatedAt: meeting.updatedAt, videoUrl: meeting.videoUrl, projectName: meeting.project.name,
+      organizerName: `${meeting.organizer.firstName} ${meeting.organizer.lastName}`,
+    });
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.attachment(file.filename);
+    res.send(file.content);
+  } catch (error) {
+    console.error('Error creating the calendar file:', error);
+    res.status(500).json({ error: 'Failed to create the calendar file' });
   }
 });
 

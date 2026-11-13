@@ -92,6 +92,34 @@ try {
   const plain = JSON.parse(text.stdout.trim().split('\n').pop() || '""');
   check('plain-text email has the link too', plain.includes('Video call (Jitsi Meet): https://meet.jit.si/r'), plain.slice(0, 80));
   check('1-hour reminder button joins the call', plain.includes('Join the video call: https://meet.jit.si/r'));
+
+  // ---- .ics calendar file: attached to the confirmation email and downloadable ----
+  const confFile = fs.readdirSync(OUTBOX).find(f => f.endsWith('.html') && fs.readFileSync(path.join(OUTBOX, f), 'utf8').startsWith(`<!-- To: ${people.Bob.email} | Subject: Confirmed: Kick-off`));
+  const icsFile = confFile && fs.readdirSync(OUTBOX).find(f => f.startsWith(confFile.slice(0, -5) + '-') && f.endsWith('.ics'));
+  const ics = icsFile ? fs.readFileSync(path.join(OUTBOX, icsFile), 'utf8') : '';
+  const icsUtc = d => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  check('confirmation email has an .ics attachment', !!icsFile, icsFile);
+  check('.ics is a valid calendar event (CRLF lines, begin/end)', ics.startsWith('BEGIN:VCALENDAR\r\n') && ics.includes('BEGIN:VEVENT') && ics.trimEnd().endsWith('END:VCALENDAR'));
+  check('.ics has the confirmed time in UTC', ics.includes(`DTSTART:${icsUtc(slot)}`) && ics.includes(`DTEND:${icsUtc(new Date(slot.getTime() + 30 * 60000))}`));
+  check('.ics has a stable UID and the video link as location', ics.includes(`UID:${m1.id}@safezone`) && ics.includes(`LOCATION:${m1.videoUrl}`));
+  check('.ics escapes text and folds long lines', /SUMMARY:Kick-off <b>call<\/b>/.test(ics) && ics.split('\r\n').every(l => Buffer.byteLength(l) <= 75));
+  const icsRes = await fetch(`${API}/api/meetings/${m1.id}/ics`, { headers: { Authorization: `Bearer ${tok.Bob}` } });
+  const icsBody = await icsRes.text();
+  check('participant downloads the .ics file', icsRes.status === 200 && icsRes.headers.get('content-type')?.startsWith('text/calendar') && icsBody.includes(`UID:${m1.id}@safezone`));
+  check('download has a file name', /attachment; filename="Kick-off-b-call-b\.ics"/.test(icsRes.headers.get('content-disposition') || ''), icsRes.headers.get('content-disposition'));
+  check('no .ics for a meeting whose time is not decided', (await call('GET', `/api/meetings/${m2.id}/ics`, tok.Ana)).status === 400);
+  check('not logged in: no .ics', (await call('GET', `/api/meetings/${m1.id}/ics`, null)).status === 401);
+  // Rescheduling sends a new file with the same UID and a higher SEQUENCE (calendars update instead of duplicating)
+  const seqOf = s => Number(s.match(/SEQUENCE:(\d+)/)?.[1]);
+  await sleep(1100);
+  const moved = new Date(slot.getTime() + 86400e3);
+  await call('PUT', `/api/meetings/${m1.id}/reschedule`, tok.Ana, { startDate: moved.toISOString() });
+  await waitForMail(people.Bob.email, 'Moved: Kick-off');
+  const movedFile = fs.readdirSync(OUTBOX).find(f => f.endsWith('.html') && fs.readFileSync(path.join(OUTBOX, f), 'utf8').startsWith(`<!-- To: ${people.Bob.email} | Subject: Moved: Kick-off`));
+  const movedIcsName = movedFile && fs.readdirSync(OUTBOX).find(f => f.startsWith(movedFile.slice(0, -5) + '-') && f.endsWith('.ics'));
+  const movedIcs = movedIcsName ? fs.readFileSync(path.join(OUTBOX, movedIcsName), 'utf8') : '';
+  check('reschedule email has an updated .ics (same UID, new time, higher SEQUENCE)',
+    movedIcs.includes(`UID:${m1.id}@safezone`) && movedIcs.includes(`DTSTART:${icsUtc(moved)}`) && seqOf(movedIcs) > seqOf(ics));
   check('"auto" cannot be chosen after confirmation', (await call('PUT', `/api/meetings/${m1.id}/video`, tok.Ana, { video: 'auto' })).status === 400);
 
   // ---- Changing the call ----

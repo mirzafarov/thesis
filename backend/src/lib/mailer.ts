@@ -8,6 +8,8 @@ export interface Email {
   subject: string;
   html: string;
   text: string;
+  // e.g. the .ics calendar file of a confirmed meeting
+  attachments?: { filename: string; content: string; contentType: string }[];
 }
 
 const OUTBOX_DIR = path.resolve(__dirname, '..', '..', 'mail-outbox');
@@ -33,6 +35,10 @@ function saveToOutbox(email: Email) {
   const safe = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/--/g, '&#45;&#45;');
   const header = `<!-- To: ${safe(email.to)} | Subject: ${safe(email.subject)} -->\n`;
   fs.writeFileSync(file, header + email.html);
+  // Attachments are saved next to the email: <same name>-<attachment file name>
+  for (const a of email.attachments ?? []) {
+    fs.writeFileSync(file.replace(/\.html$/, `-${a.filename}`), a.content);
+  }
   console.log(`[mail] To ${email.to}: "${email.subject}" (saved to mail-outbox/${path.basename(file)})`);
 }
 

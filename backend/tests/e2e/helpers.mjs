@@ -41,9 +41,13 @@ export async function signUpAndConfirm(user, password) {
 export function cleanOutbox(tag) {
   let removed = 0;
   for (const f of fs.existsSync(OUTBOX) ? fs.readdirSync(OUTBOX) : []) {
+    if (!f.endsWith('.html') || !fs.existsSync(path.join(OUTBOX, f))) continue;
     if (fs.readFileSync(path.join(OUTBOX, f), 'utf8').split('\n')[0].includes(tag)) {
       fs.unlinkSync(path.join(OUTBOX, f));
       removed++;
+      // attachments of that email (e.g. the .ics file) are saved as <email name>-<file name>
+      const stem = f.slice(0, -'.html'.length) + '-';
+      for (const a of fs.readdirSync(OUTBOX)) if (a.startsWith(stem)) fs.unlinkSync(path.join(OUTBOX, a));
     }
   }
   return removed;

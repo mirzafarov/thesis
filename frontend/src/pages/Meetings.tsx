@@ -212,6 +212,21 @@ const Meetings = () => {
     setShowAIModal(true);
   };
 
+  // .ics file: works with any calendar app, also without connecting Google
+  const downloadIcs = async (meeting: any) => {
+    try {
+      const res = await axios.get(`/api/meetings/${meeting.id}/ics`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${meeting.title.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'meeting'}.ics`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setNotice({ variant: 'danger', text: 'Could not create the calendar file.' });
+    }
+  };
+
   const zonesOf = (meeting: any) => (meeting.participants || []).map((p: any) => p.user?.timeZone);
 
   return (
@@ -266,6 +281,12 @@ const Meetings = () => {
                     </Badge>
                     <div className="d-flex flex-wrap gap-2 justify-content-end">
                       <JoinButton meeting={meeting} />
+                      {isScheduled(meeting) && (
+                        <Button variant="outline-secondary" size="sm" onClick={() => downloadIcs(meeting)}
+                          title="Download an .ics file for Outlook, Apple Calendar, Google Calendar…">
+                          <i className="bi bi-calendar-plus me-1" aria-hidden="true"></i>Add to calendar
+                        </Button>
+                      )}
                       {meeting.status !== 'CANCELLED' && (
                         <Button variant="outline-secondary" size="sm" onClick={() => setTodoMeeting(meeting)}
                           aria-label={`To-dos for ${meeting.title}: ${meeting.todos?.done ?? 0} of ${meeting.todos?.total ?? 0} done`}>

@@ -2,6 +2,8 @@ import { prisma } from './prisma';
 import { sendEmail } from './mailer';
 import { emails } from './emails';
 import { providerLabel } from './video';
+import { icsAttachment } from './ics';
+import type { Email } from './mailer';
 
 const SCHEDULED = ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'] as const;
 const HOUR = 60 * 60 * 1000;
@@ -46,6 +48,18 @@ const info = (m: LoadedMeeting) => ({
   videoLabel: m.videoProvider === 'auto' ? 'video call' : providerLabel(m.videoProvider),
 });
 
+/** Attach the meeting's .ics calendar file (only once it has a time). */
+const withIcs = (email: Email, m: LoadedMeeting): Email =>
+  m.startDate && m.endDate
+    ? {
+        ...email,
+        attachments: [icsAttachment({
+          id: m.id, title: m.title, description: m.description, startDate: m.startDate, endDate: m.endDate,
+          updatedAt: m.updatedAt, videoUrl: m.videoUrl, projectName: m.project.name, organizerName: fullName(m.organizer),
+        })],
+      }
+    : email;
+
 // Run in the background: the API response does not wait for emails.
 const background = (task: () => Promise<unknown>) => {
   task().catch(err => console.error('[notifications] failed:', err));
@@ -73,7 +87,7 @@ export function notifyMeetingConfirmed(meetingId: string) {
     if (!m) return;
     for (const p of m.participants) {
       if (await claim(p.userId, 'MEETING_CONFIRMED', m.id)) {
-        await sendEmail(emails.meetingConfirmed(p.user, info(m)));
+        await sendEmail(withIcs(emails.meetingConfirmed(p.user, info(m)), m));
       }
     }
   });
@@ -88,7 +102,7 @@ export function notifyMeetingRescheduled(meetingId: string, previousStart: Date 
     const m = await loadMeeting(meetingId);
     if (!m) return;
     for (const p of m.participants) {
-      await sendEmail(emails.meetingRescheduled(p.user, info(m), previousStart));
+      await sendEmail(withIcs(emails.meetingRescheduled(p.user, info(m), previousStart), m));
     }
   });
 }
