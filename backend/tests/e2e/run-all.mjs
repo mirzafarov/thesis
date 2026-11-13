@@ -62,7 +62,9 @@ function startServer() {
       ...process.env,
       PORT: new URL(API).port || '5021',
       SMTP_HOST: '', // never send real emails from tests
-      NOTIFY_INTERVAL_MINUTES: '600', // the email suite triggers reminders itself
+      // No automatic reminder runs on the test server: they would act on everybody's real data.
+      // The email and to-do suites run the checks themselves, limited to their own test projects.
+      NOTIFICATIONS_OFF: 'true',
       REQUIRE_2FA_FOR_MANAGERS: 'true', // the security suite checks this rule
     },
     stdio: ['ignore', 'pipe', 'pipe'],

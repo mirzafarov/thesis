@@ -47,6 +47,7 @@ const STATUS_OPTIONS: { value: GanttActivity['status']; label: string }[] = [
 const emptyActivity = {
   id: '', title: '', description: '', phaseId: '', responsibleId: '', startDate: '', endDate: '',
   status: 'PENDING' as GanttActivity['status'], isCritical: false,
+  dependsOn: [] as string[], // activities that must finish before this one starts
 };
 const emptyPhase = { id: '', name: '', startDate: '', endDate: '', isMilestone: false };
 
@@ -128,6 +129,7 @@ const ProjectDetails = () => {
       endDate: isoToInput(a.endDate),
       status: a.status,
       isCritical: a.isCritical,
+      dependsOn: a.dependsOn ?? [],
     } : { ...emptyActivity, ...defaults });
   };
 
@@ -152,11 +154,18 @@ const ProjectDetails = () => {
       isCritical: f.isCritical,
     };
     try {
+      let activityId = f.id;
       if (f.id) {
         const res = await axios.put(`/api/projects/${id}/activities/${f.id}`, body);
         showSuggestions(f.title, res.data);
       } else {
-        await axios.post(`/api/projects/${id}/activities`, body);
+        activityId = (await axios.post(`/api/projects/${id}/activities`, body)).data.id;
+      }
+      // Dependencies are saved separately (managers only), and only when they changed
+      const before = project.activities.find(a => a.id === f.id)?.dependsOn ?? [];
+      const changed = before.length !== f.dependsOn.length || f.dependsOn.some(d => !before.includes(d));
+      if (isManager && changed) {
+        await axios.put(`/api/projects/${id}/activities/${activityId}/dependencies`, { dependsOn: f.dependsOn });
       }
       setActivityForm(null);
       fetchProject();
@@ -575,6 +584,36 @@ const ProjectDetails = () => {
                   </Col>
                 </Row>
               </fieldset>
+              {(() => {
+                const others = project.activities.filter(a => a.id !== activityForm.id);
+                if (others.length === 0) return null;
+                const toggleDep = (depId: string) => setActivityForm({
+                  ...activityForm,
+                  dependsOn: activityForm.dependsOn.includes(depId) ? activityForm.dependsOn.filter(x => x !== depId) : [...activityForm.dependsOn, depId],
+                });
+                return (
+                  <fieldset className="mb-3">
+                    <legend className="form-label mb-1" style={{ fontSize: '1rem' }}>Starts after</legend>
+                    <div className="small mb-2" style={{ color: 'var(--text-secondary)' }}>
+                      Activities that must be finished first. They are shown as arrows on the Gantt chart; a red arrow means the dates clash.
+                    </div>
+                    {isManager ? (
+                      <div className="d-flex flex-column gap-1" style={{ maxHeight: 150, overflowY: 'auto' }}>
+                        {others.map(o => (
+                          <Form.Check key={o.id} type="checkbox" id={`dep-${o.id}`} label={o.title}
+                            checked={activityForm.dependsOn.includes(o.id)} onChange={() => toggleDep(o.id)} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="small">
+                        {activityForm.dependsOn.length
+                          ? activityForm.dependsOn.map(d => others.find(o => o.id === d)?.title).filter(Boolean).join(', ')
+                          : 'No other activity has to finish first.'}
+                      </div>
+                    )}
+                  </fieldset>
+                );
+              })()}
               <Row>
                 <Col sm={6}>
                   <Form.Group className="mb-3" controlId="act-status">

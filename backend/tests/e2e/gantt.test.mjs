@@ -1,6 +1,11 @@
 // End-to-end check of the Gantt chart API: phases, milestones, activities, permissions, moving linked meetings.
 import crypto from 'node:crypto';
-import { API, signUpAndConfirm, cleanOutbox } from './helpers.mjs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { API, BACKEND, signUpAndConfirm, cleanOutbox } from './helpers.mjs';
+
+const { PrismaClient } = createRequire(path.join(BACKEND, 'package.json'))('@prisma/client');
+const prisma = new PrismaClient();
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${extra ? '  -> ' + extra : ''}`); };
@@ -99,12 +104,37 @@ await call('DELETE', `/api/projects/${pid}/phases/${tmpPhase.data.id}`, A);
 const after = await call('GET', `/api/projects/${pid}`, A);
 check('deleting a phase keeps its activities', after.data.activities.find(a => a.id === tmpAct.data.id)?.phaseId === null);
 await call('DELETE', `/api/projects/${pid}/activities/${tmpAct.data.id}`, A);
+
+// Dependencies (finish-to-start): "Gantt chart UI" (a4) starts after "Backend API" (a3) and "User interviews" (a2)
+const deps = (actId, list, token = A) => call('PUT', `/api/projects/${pid}/activities/${actId}/dependencies`, token, { dependsOn: list });
+let d = await deps(a4.data.id, [a3.data.id, a2.data.id]);
+check('manager sets dependencies', d.status === 200 && d.data.dependsOn.length === 2);
+let det = await call('GET', `/api/projects/${pid}`, B);
+const depsOf = (det, id) => det.data.activities.find(a => a.id === id)?.dependsOn ?? [];
+check('project detail lists dependsOn for the chart', depsOf(det, a4.data.id).length === 2 && depsOf(det, a3.data.id).length === 0);
+check('employee cannot change dependencies', (await deps(a4.data.id, [], B)).status === 403);
+check('activity cannot depend on itself', (await deps(a4.data.id, [a4.data.id])).status === 400);
+const foreignAct = await call('POST', `/api/projects/${other.data.id}/activities`, A, { title: 'Foreign activity' });
+check('dependency on another project\'s activity refused', (await deps(a4.data.id, [foreignAct.data.id])).status === 400);
+check('direct loop refused (a3 after a4, while a4 is after a3)', (await deps(a3.data.id, [a4.data.id])).status === 400);
+await deps(a3.data.id, [a1.data.id]); // a3 after a1: fine
+check('longer loop refused (a1 → a3 → a4 → a1)', (await deps(a1.data.id, [a4.data.id])).status === 400);
+d = await deps(a4.data.id, [a3.data.id]);
+det = await call('GET', `/api/projects/${pid}`, A);
+check('setting the list replaces it', JSON.stringify(depsOf(det, a4.data.id)) === JSON.stringify([a3.data.id]));
+const depAudit = await prisma.auditLog.findFirst({ where: { projectId: pid, action: 'ACTIVITY_DEPENDENCIES_CHANGED' }, orderBy: { createdAt: 'desc' } });
+check('dependency changes are audited', /"Gantt chart UI" now starts after: "Backend API"/.test(depAudit?.details || ''), depAudit?.details);
+await call('DELETE', `/api/projects/${pid}/activities/${a3.data.id}`, A);
+det = await call('GET', `/api/projects/${pid}`, A);
+check('deleting an activity removes its dependencies', depsOf(det, a4.data.id).length === 0);
+
 await call('DELETE', `/api/projects/${other.data.id}`, A);
 
 // Clean up: delete the project and both temporary accounts.
 await call('DELETE', `/api/projects/${pid}`, A);
 for (const t of tokens) await call('DELETE', '/api/auth/me', t);
 cleanOutbox(tag);
+await prisma.$disconnect();
 console.log(`\n${pass} passed, ${fail} failed`);
 
 process.exitCode = fail > 0 ? 1 : 0;

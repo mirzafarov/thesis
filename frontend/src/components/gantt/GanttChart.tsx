@@ -30,6 +30,8 @@ export interface GanttActivity {
   isCritical: boolean;
   responsible?: { id: string; firstName: string; lastName: string } | null;
   meetings?: GanttMeeting[];
+  /** Activities that must finish before this one starts (finish-to-start dependencies) */
+  dependsOn?: string[];
 }
 
 export type GanttItem = { kind: 'phase'; item: GanttPhase } | { kind: 'activity'; item: GanttActivity };
@@ -69,6 +71,10 @@ interface Preview {
 }
 
 const itemKey = (t: GanttItem) => `${t.kind}:${t.item.id}`;
+
+// Must match gantt.css: header height and row height, used to place dependency arrows
+const HEADER_H = 52;
+const ROW_H = 40;
 
 function spanOf(t: GanttItem): [number, number] | null {
   const { startDate, endDate } = t.item;
@@ -161,6 +167,15 @@ export default function GanttChart({ phases, activities, readOnly, onMove, onOpe
     }
     return out;
   }, [rangeStart, rangeEnd, zoom]);
+
+  // ---------- Dependencies ----------
+
+  // Row number of each activity (arrows go from row to row)
+  const rowOf = useMemo(() => {
+    const m = new Map<string, number>();
+    rows.forEach((r, i) => { if (r.target?.kind === 'activity') m.set(r.target.item.id, i); });
+    return m;
+  }, [rows]);
 
   // ---------- Dragging ----------
 
@@ -260,8 +275,11 @@ export default function GanttChart({ phases, activities, readOnly, onMove, onOpe
     const name = t.kind === 'phase' ? `${t.item.isMilestone ? 'Milestone' : 'Phase'} ${t.item.name}` : `Activity ${t.item.title}`;
     const when = span ? (span[0] === span[1] ? formatDayLong(span[0]) : `${formatDayLong(span[0])} to ${formatDayLong(span[1])}`) : 'no dates';
     const status = t.kind === 'activity' ? `, ${STATUS_LABEL[t.item.status]}${isOverdue(t.item, today) ? ', overdue' : ''}` : '';
+    const after = t.kind === 'activity' && t.item.dependsOn?.length
+      ? `, starts after ${t.item.dependsOn.map(id => activities.find(a => a.id === id)?.title).filter(Boolean).join(' and ')}`
+      : '';
     const hint = readOnly ? 'Press Enter for details.' : 'Arrow keys move it by a day, Shift plus arrow keys change the end date, Enter edits.';
-    return `${name}, ${when}${status}. ${hint}`;
+    return `${name}, ${when}${status}${after}. ${hint}`;
   };
 
   const renderBar = (t: GanttItem) => {
@@ -347,6 +365,28 @@ export default function GanttChart({ phases, activities, readOnly, onMove, onOpe
         );
       });
 
+  // One arrow per dependency, from the end of the predecessor bar to the start of the successor bar.
+  // Red when the successor starts before the predecessor has ended (a date conflict).
+  const byId = new Map(activities.map(a => [a.id, a]));
+  const links = activities.flatMap(succ => (succ.dependsOn ?? []).map(predId => {
+    const pred = byId.get(predId);
+    if (!pred) return null;
+    const ps = currentSpan({ kind: 'activity', item: pred });
+    const ss = currentSpan({ kind: 'activity', item: succ });
+    const pr = rowOf.get(pred.id), sr = rowOf.get(succ.id);
+    if (!ps || !ss || pr === undefined || sr === undefined) return null;
+    return { key: `${pred.id}>${succ.id}`, pred, succ, conflict: ss[0] <= ps[1], fromX: x(ps[1] + 1), toX: x(ss[0]), fromY: HEADER_H + pr * ROW_H + ROW_H / 2, toY: HEADER_H + sr * ROW_H + ROW_H / 2 };
+  })).filter((l): l is NonNullable<typeof l> => !!l);
+  const conflicts = links.filter(l => l.conflict);
+
+  // Elbow path: out to the right, down/up to the successor row, then into the bar's start.
+  const linkPath = (l: (typeof links)[number]) => {
+    const out = l.fromX + 8;
+    if (l.toX - 8 >= out) return `M${l.fromX},${l.fromY} H${out} V${l.toY} H${l.toX - 2}`;
+    const between = l.fromY + (l.toY > l.fromY ? ROW_H / 2 : -ROW_H / 2); // along the row border
+    return `M${l.fromX},${l.fromY} H${out} V${between} H${l.toX - 10} V${l.toY} H${l.toX - 2}`;
+  };
+
   const weekendShading = zoom === 'day'
     ? `repeating-linear-gradient(90deg, transparent 0 ${dayW * 5}px, var(--gantt-weekend) ${dayW * 5}px ${dayW * 7}px)`
     : 'none';
@@ -372,8 +412,34 @@ export default function GanttChart({ phases, activities, readOnly, onMove, onOpe
         {!readOnly && <span className="gantt-hint d-none d-md-inline">Drag bars to move them, or drag their edges to change dates.</span>}
       </div>
 
+      {conflicts.length > 0 && (
+        <div className="alert alert-danger py-2 small mb-2" role="status">
+          <i className="bi bi-exclamation-triangle me-1" aria-hidden="true" />
+          {conflicts.length === 1 ? 'Date conflict:' : `${conflicts.length} date conflicts:`}{' '}
+          {conflicts.map((c, i) => (
+            <span key={c.key}>{i > 0 && '; '}"{c.succ.title}" starts before "{c.pred.title}" has finished</span>
+          ))}
+        </div>
+      )}
+
       <div className="gantt-scroll" ref={scrollRef}>
         <div className="gantt-inner" style={{ width: width + 240 }}>
+          {links.length > 0 && (
+            <svg className="gantt-links" width={width} height={HEADER_H + rows.length * ROW_H} aria-hidden="true">
+              <defs>
+                <marker id="gantt-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L8,4 L0,8 z" className="gantt-arrowhead" />
+                </marker>
+                <marker id="gantt-arrow-conflict" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L8,4 L0,8 z" className="gantt-arrowhead conflict" />
+                </marker>
+              </defs>
+              {links.map(l => (
+                <path key={l.key} d={linkPath(l)} className={`gantt-link${l.conflict ? ' conflict' : ''}`}
+                  markerEnd={`url(#${l.conflict ? 'gantt-arrow-conflict' : 'gantt-arrow'})`} />
+              ))}
+            </svg>
+          )}
           {/* Header */}
           <div className="gantt-row gantt-header">
             <div className="gantt-label gantt-corner">Phase / activity</div>
@@ -453,6 +519,8 @@ export default function GanttChart({ phases, activities, readOnly, onMove, onOpe
         <span><span className="gantt-swatch overdue" /> Overdue</span>
         <span><i className="bi bi-people-fill" aria-hidden="true" /> Meeting</span>
         <span><span className="gantt-swatch today" /> Today</span>
+        <span><i className="bi bi-arrow-right" aria-hidden="true" /> Starts after</span>
+        <span className="text-danger"><i className="bi bi-arrow-right" aria-hidden="true" /> Date conflict</span>
       </div>
     </div>
   );

@@ -256,6 +256,11 @@ export async function runScheduledNotifications(now = new Date(), scope?: { proj
 
 /** Check for reminders and delays every few minutes while the server runs. */
 export function startNotificationScheduler(intervalMinutes = Number(process.env.NOTIFY_INTERVAL_MINUTES || 5)) {
+  // The end-to-end test server switches this off: it must not process (or send) anybody's real reminders.
+  if (process.env.NOTIFICATIONS_OFF === 'true') {
+    console.log('[notifications] scheduler is off (NOTIFICATIONS_OFF=true)');
+    return;
+  }
   runScheduledNotifications();
   const timer = setInterval(runScheduledNotifications, intervalMinutes * 60 * 1000);
   timer.unref();

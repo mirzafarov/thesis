@@ -194,6 +194,21 @@ model Activity {
   phase       Phase?    @relation(fields: [phaseId], references: [id], onDelete: SetNull)
   responsible User?     @relation("ActivityResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
   meetings    Meeting[]
+  predecessors ActivityDependency[] @relation("DependencySuccessor")   // activities this one waits for
+  successors   ActivityDependency[] @relation("DependencyPredecessor") // activities waiting for this one
+}
+
+// Gantt dependency (finish-to-start): the successor should start only after the predecessor has finished.
+model ActivityDependency {
+  id            String   @id @default(uuid())
+  predecessorId String
+  successorId   String
+  createdAt     DateTime @default(now())
+
+  predecessor   Activity @relation("DependencyPredecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor     Activity @relation("DependencySuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorId, successorId])
 }
 
 enum ActivityStatus {

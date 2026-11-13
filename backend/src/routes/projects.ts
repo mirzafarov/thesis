@@ -119,13 +119,18 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
           include: {
             responsible: { select: { id: true, firstName: true, lastName: true } },
             meetings: { select: { id: true, title: true, startDate: true, endDate: true, status: true } },
+            predecessors: { select: { predecessorId: true } },
           },
         },
       },
     });
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    res.json(project);
+    // Dependencies as a simple list of ids: dependsOn = activities that must finish first
+    res.json({
+      ...project,
+      activities: project.activities.map(({ predecessors, ...a }) => ({ ...a, dependsOn: predecessors.map(p => p.predecessorId) })),
+    });
   } catch (error) {
     handleError(res, error, 'Failed to fetch project');
   }
@@ -272,6 +277,58 @@ router.post('/:id/activities', authenticate, async (req: AuthRequest, res) => {
     res.status(201).json(activity);
   } catch (error) {
     handleError(res, error, 'Failed to create activity');
+  }
+});
+
+/**
+ * Set which activities must finish before this one starts (managers only). body.dependsOn = [activityId, ...]
+ * replaces the current list. Refused if an id is not in the same project, is the activity itself, or would create
+ * a loop (A waits for B, B waits for A). Dates are not changed: a dependency whose dates clash is shown in red.
+ */
+router.put('/:projectId/activities/:activityId/dependencies', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { projectId, activityId } = req.params as { projectId: string; activityId: string };
+    if (!(await isProjectManager(req.user.userId, projectId))) {
+      return res.status(403).json({ error: 'Only managers can change dependencies' });
+    }
+    const activity = await prisma.activity.findFirst({ where: { id: activityId, projectId } });
+    if (!activity) return res.status(404).json({ error: 'Activity not found' });
+
+    const wanted: string[] = Array.isArray(req.body.dependsOn) ? [...new Set<string>(req.body.dependsOn.map(String))] : [];
+    if (wanted.includes(activityId)) throw new BadRequest('An activity cannot depend on itself');
+    const inProject = await prisma.activity.findMany({ where: { projectId, id: { in: wanted } }, select: { id: true, title: true } });
+    if (inProject.length !== wanted.length) throw new BadRequest('Dependencies must be activities of the same project');
+
+    // Loop check: walking "depends on" links from each wanted predecessor must never reach this activity.
+    const all = await prisma.activityDependency.findMany({
+      where: { successor: { projectId }, NOT: { successorId: activityId } },
+      select: { predecessorId: true, successorId: true },
+    });
+    const dependsOn = new Map<string, string[]>();
+    for (const d of all) dependsOn.set(d.successorId, [...(dependsOn.get(d.successorId) ?? []), d.predecessorId]);
+    const seen = new Set<string>();
+    const stack = [...wanted];
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (id === activityId) throw new BadRequest('This would create a loop: an activity would end up waiting for itself');
+      if (seen.has(id)) continue;
+      seen.add(id);
+      stack.push(...(dependsOn.get(id) ?? []));
+    }
+
+    await prisma.$transaction([
+      prisma.activityDependency.deleteMany({ where: { successorId: activityId } }),
+      ...wanted.map(predecessorId => prisma.activityDependency.create({ data: { predecessorId, successorId: activityId } })),
+    ]);
+    await audit(req, {
+      userId: req.user.userId, projectId, action: 'ACTIVITY_DEPENDENCIES_CHANGED',
+      details: wanted.length
+        ? `"${activity.title}" now starts after: ${inProject.map(a => `"${a.title}"`).join(', ')}.`
+        : `"${activity.title}" no longer depends on other activities.`,
+    });
+    res.json({ dependsOn: wanted });
+  } catch (error) {
+    handleError(res, error, 'Failed to change dependencies');
   }
 });
 

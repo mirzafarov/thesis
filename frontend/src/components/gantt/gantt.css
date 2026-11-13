@@ -300,3 +300,17 @@
 @media (prefers-reduced-motion: no-preference) {
   .gantt-bar, .gantt-milestone { transition: box-shadow 0.15s; }
 }
+
+/* Dependency arrows (finish-to-start). Drawn under the bars (z-index 2) and the sticky labels (z-index 3). */
+.gantt-links {
+  position: absolute;
+  top: 0;
+  left: var(--gantt-label);
+  z-index: 1;
+  pointer-events: none;
+  overflow: visible;
+}
+.gantt-link { fill: none; stroke: var(--text-secondary); stroke-width: 1.5; }
+.gantt-link.conflict { stroke: var(--danger); stroke-width: 2; stroke-dasharray: 5 3; }
+.gantt-arrowhead { fill: var(--text-secondary); }
+.gantt-arrowhead.conflict { fill: var(--danger); }
