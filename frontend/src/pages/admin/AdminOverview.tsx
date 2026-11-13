@@ -17,9 +17,14 @@ interface Overview {
 export default function AdminOverview() {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
+  // API server status (moved here from the user dashboard: it is technical information for administrators)
+  const [api, setApi] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     axios.get('/api/admin/overview').then(r => setData(r.data)).catch(e => setError(e.response?.data?.error || 'Could not load the overview.'));
+    axios.get('/api/health')
+      .then(r => setApi({ ok: true, message: r.data.message }))
+      .catch(() => setApi({ ok: false, message: 'Could not reach the backend API' }));
   }, []);
 
   if (error) return <Container fluid className="p-2 p-md-4"><Alert variant="danger">{error}</Alert></Container>;
@@ -111,6 +116,10 @@ export default function AdminOverview() {
               <div className="d-flex justify-content-between py-1"><span>Logout after inactivity</span><b>{settings.sessionIdleMinutes} min</b></div>
               <div className="d-flex justify-content-between py-1"><span>Minimum password length</span><b>{settings.passwordMinLength}</b></div>
               <hr />
+              <div className="d-flex justify-content-between py-1">
+                <span>API server</span>
+                <b className={api?.ok ? 'text-success' : 'text-warning'} title={api?.message}>{api ? (api.ok ? 'online' : 'not reachable') : 'checking…'}</b>
+              </div>
               {(['email', 'googleCalendar', 'ai'] as const).map(k => (
                 <div key={k} className="d-flex justify-content-between py-1">
                   <span>{{ email: 'Email (SMTP)', googleCalendar: 'Google Calendar', ai: 'AI assistant (Gemini)' }[k]}</span>

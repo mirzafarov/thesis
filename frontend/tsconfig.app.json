@@ -22,8 +22,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
-  // The 3D intro is type-checked in tsconfig.welcome.json: React Three Fiber adds hundreds of JSX
-  // elements globally, which makes react-bootstrap's polymorphic component types too complex.
-  "exclude": ["src/welcome"]
+  "include": ["src"]
 }

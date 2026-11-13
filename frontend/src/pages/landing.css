@@ -24,22 +24,63 @@
 .lp a:focus-visible, .lp-btn:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
 
 /* ---- Navigation ---- */
+/* Top bar. At the top of the page it is a flat, full-width bar; once the page is scrolled it flows into a
+   floating "liquid glass" capsule: narrower, fully rounded, frosted and slightly see-through.
+   One soft easing curve for every property makes the change feel like one liquid movement. */
 .lp-nav {
+  --lp-ease: cubic-bezier(0.22, 1, 0.36, 1);
   position: sticky; top: 0; z-index: 40;
-  background: color-mix(in srgb, var(--page-bg) 88%, transparent);
-  backdrop-filter: saturate(1.4) blur(10px);
+  padding: 0;
+  /* full-width bar at the top of the page */
+  background: color-mix(in srgb, var(--page-bg) 92%, transparent);
   border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  transition: padding 0.6s var(--lp-ease), background-color 0.4s var(--lp-ease), border-color 0.4s var(--lp-ease);
 }
-.lp-nav-inner { display: flex; align-items: center; gap: 24px; height: 64px; }
+.lp-nav-inner {
+  display: flex; align-items: center; gap: 24px; height: 64px;
+  max-width: 1120px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  transition: max-width 0.6s var(--lp-ease), height 0.6s var(--lp-ease), border-radius 0.6s var(--lp-ease),
+              background-color 0.6s var(--lp-ease), border-color 0.6s var(--lp-ease), box-shadow 0.6s var(--lp-ease);
+}
+/* scrolled: the full-width bar fades away and the content area becomes the capsule */
+.lp-nav.is-scrolled {
+  padding: 10px 12px 0;
+  background: transparent; border-bottom-color: transparent;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.lp-nav.is-scrolled .lp-nav-inner {
+  max-width: 1000px; height: 56px;
+  border-radius: 999px;
+  border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
+  backdrop-filter: blur(18px) saturate(1.6); -webkit-backdrop-filter: blur(18px) saturate(1.6);
+  /* soft light along the top edge (the "glass") and a floating shadow */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 10px 30px -10px rgba(15, 23, 42, 0.35);
+}
+[data-theme="dark"] .lp-nav.is-scrolled .lp-nav-inner {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+}
+@media (min-width: 768px) { .lp-nav.is-scrolled .lp-nav-inner { padding: 0 10px 0 24px; } }
+/* Phones: the capsule is narrow, so tighter spacing and never wrap the logo or button text */
+.lp-logo, .lp-btn { white-space: nowrap; }
+@media (max-width: 767.98px) {
+  .lp-nav-inner { gap: 12px; }
+  .lp-nav.is-scrolled { padding: 8px 8px 0; }
+  .lp-nav.is-scrolled .lp-nav-inner { padding: 0 6px 0 14px; }
+  .lp-nav .lp-btn { padding: 0 14px; }
+}
 .lp-logo { font-weight: 700; font-size: 1.2rem; color: var(--text-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
-.lp-logo span { color: var(--primary); }
-.lp-logo i { color: var(--primary); }
 .lp-logo-sm { font-size: 1rem; }
 .lp-nav-links { display: none; gap: 24px; margin-right: auto; }
 .lp-nav-links a { color: var(--text-secondary); text-decoration: none; font-weight: 500; font-size: 0.95rem; }
 .lp-nav-links a:hover { color: var(--text-primary); }
 .lp-nav-actions { display: flex; gap: 8px; margin-left: auto; }
-@media (min-width: 768px) { .lp-nav-links { display: flex; } .lp-nav-actions { margin-left: 0; } }
+/* Section links only where they fit next to the buttons (tablet landscape and up) */
+@media (min-width: 992px) { .lp-nav-links { display: flex; } .lp-nav-actions { margin-left: 0; } }
 
 /* ---- Buttons ---- */
 .lp-btn {
@@ -107,6 +148,15 @@
 }
 .lp-card:hover { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); transform: translateY(-2px); box-shadow: var(--lp-shadow); }
 .lp-card p, .lp-step p { color: var(--text-secondary); }
+@media (min-width: 900px) { .lp-grid-3 { grid-template-columns: repeat(3, 1fr); } }
+.lp-icon-muted { background: color-mix(in srgb, var(--text-secondary) 12%, transparent); color: var(--text-secondary); }
+.lp-problem { display: flex; flex-direction: column; }
+.lp .lp-answer {
+  margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border);
+  color: var(--text-primary); font-weight: 500; display: flex; gap: 8px; align-items: flex-start;
+}
+.lp-problem > p:first-of-type { margin-bottom: 16px; }
+.lp-answer i { color: var(--primary); margin-top: 2px; }
 .lp-icon {
   display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 10px;
   background: var(--lp-accent-soft); color: var(--primary); font-size: 1.25rem; margin-bottom: 16px;
@@ -143,5 +193,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lp *, .lp *::before, .lp *::after { transition: none !important; }
+  .lp-nav, .lp-nav-inner { transition: none !important; }
   .lp-card:hover { transform: none; }
 }

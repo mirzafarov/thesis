@@ -9,8 +9,8 @@ export const ProtectedRoute = ({ children }: { children: ReactNode }) => {
 
   if (!isAuthenticated) {
     // After an automatic logout (inactivity, expired session) go straight to the form, which explains why;
-    // otherwise start with the welcome experience.
-    return <Navigate to={hasLogoutReason() ? '/login' : '/welcome'} replace />;
+    // otherwise start with the landing page, which explains Safe Zone.
+    return <Navigate to={hasLogoutReason() ? '/login' : '/home'} replace />;
   }
 
   // Managers and administrators must set up two-factor login before anything else.

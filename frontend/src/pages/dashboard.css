@@ -1,0 +1,65 @@
+/* Dashboard. Same tokens and card style as the landing page (index.css colours, 12px radius, 8px spacing rhythm). */
+/* Full width like the other app pages (Projects, Meetings, Reports) */
+.db { width: 100%; }
+
+.db-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+.db .db-title { font-size: clamp(1.5rem, 3vw, 1.9rem); font-weight: 700; letter-spacing: -0.01em; margin: 0 0 4px; }
+.db-subtitle { color: var(--text-secondary); margin: 0; }
+
+/* Google Calendar: connected = quiet status chip, not connected = white Google-style button */
+.db-calendar {
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border); min-width: 0;
+}
+.db-calendar-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.db-calendar-title { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
+.db-calendar-email { font-size: 0.8rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.db .db-calendar-disconnect { color: var(--text-secondary); text-decoration: none; font-weight: 500; }
+.db .db-calendar-disconnect:hover { color: var(--danger); }
+.db-google-btn {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-radius: 10px;
+  background: #fff; color: #1f2937; border: 1px solid #dadce0; font-weight: 600; cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+.db-google-btn:hover { background: #f1f5f9; }
+.db-google-btn:focus-visible, .db-link:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+
+.db-alert { border-radius: 10px; }
+
+/* Shared card */
+.db-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+
+/* Number cards */
+.db-stats { display: grid; gap: 16px; margin-bottom: 24px; }
+@media (min-width: 576px) { .db-stats { grid-template-columns: repeat(3, 1fr); } }
+.db-stat { display: flex; flex-direction: column; gap: 8px; }
+.db-stat-head { display: flex; align-items: center; gap: 10px; }
+.db-icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 9px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); font-size: 1.05rem; flex-shrink: 0;
+}
+.db-stat-label { font-weight: 600; color: var(--text-secondary); font-size: 0.95rem; }
+.db-stat-value { font-size: 2.25rem; font-weight: 700; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.db-note { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600;
+  /* amber mixed towards the text colour: darker in light mode, lighter in dark mode, readable in both */
+  color: color-mix(in srgb, var(--warning) 70%, var(--text-primary)); }
+.db .db-link { display: inline-flex; align-items: center; gap: 6px; margin-top: auto; font-weight: 600; font-size: 0.9rem; color: var(--primary); text-decoration: none; }
+.db .db-link:hover { text-decoration: underline; }
+
+/* Two panels: polls + next meetings */
+.db-columns { display: grid; gap: 16px; }
+@media (min-width: 992px) { .db-columns { grid-template-columns: 1fr 1fr; gap: 24px; } }
+.db-panel { display: flex; flex-direction: column; }
+.db .db-panel-title { font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; }
+.db-list { list-style: none; padding: 0; margin: 0; }
+.db-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; padding: 12px 0; border-top: 1px solid var(--border); }
+.db-row:first-child { border-top: 0; padding-top: 4px; }
+.db-row-main { min-width: 0; flex: 1 1 200px; }
+.db-row-title { font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
+.db-row-sub { font-size: 0.85rem; color: var(--text-secondary); display: flex; align-items: baseline; gap: 6px; }
+.db-row-action { flex-shrink: 0; }
+.db .btn.db-row-action { min-height: 36px; display: inline-flex; align-items: center; font-weight: 600; border-radius: 8px; padding: 0 14px; }
+.db-empty { color: var(--text-secondary); margin: 0; display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.db-empty a { color: var(--primary); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) { .db * { transition: none !important; } }

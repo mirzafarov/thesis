@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import BrandLogo from './BrandLogo';
 import { Offcanvas, Button } from 'react-bootstrap';
 
 const Layout = () => {
@@ -15,14 +16,11 @@ const Layout = () => {
 
       {/* Mobile Header (hidden on desktop) */}
       <div className="d-md-none border-bottom shadow-sm p-3 d-flex justify-content-between align-items-center" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
-        <div className="d-flex align-items-center">
-          <div className="text-white rounded p-1 me-2 d-flex align-items-center justify-content-center" style={{width: '30px', height: '30px', backgroundColor: 'var(--primary)'}}>
-            <i className="bi bi-hexagon-fill"></i>
-          </div>
-          <h5 className="mb-0 fw-bold" style={{ color: 'var(--text-primary)'}}>Safe <span style={{ color: 'var(--primary)'}}>Zone</span></h5>
+        <div className="d-flex align-items-center gap-2 fw-bold fs-5" style={{ color: 'var(--text-primary)' }}>
+          <BrandLogo size={30} />
         </div>
-        <Button variant="outline-secondary" size="sm" onClick={() => setShowMobileMenu(true)} className="border shadow-none">
-          <i className="bi bi-list fs-4"></i>
+        <Button variant="outline-secondary" size="sm" onClick={() => setShowMobileMenu(true)} className="border shadow-none" aria-label="Open menu">
+          <i className="bi bi-list fs-4" aria-hidden="true"></i>
         </Button>
       </div>
 

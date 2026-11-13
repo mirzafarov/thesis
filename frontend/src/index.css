@@ -31,6 +31,16 @@
   --danger-light: rgba(239, 68, 68, 0.1);
 }
 
+/* Logo: "Zone" in a blue-to-purple gradient. Darker in light mode so it stays readable on white,
+   lighter in dark mode and on the always-dark sidebar (same colours as the logo mark). */
+:root { --brand-from: #2563EB; --brand-to: #7C3AED; }
+[data-theme="dark"], .sz-on-dark { --brand-from: #60A5FA; --brand-to: #A78BFA; }
+.sz-brand-zone {
+  background: linear-gradient(90deg, var(--brand-from), var(--brand-to));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-weight: inherit;
+}
+
 body {
   font-family: 'Inter', sans-serif;
   background-color: var(--page-bg) !important;

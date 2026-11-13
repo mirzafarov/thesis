@@ -18,13 +18,7 @@ import SetupTwoFactor from './pages/SetupTwoFactor';
 import { AuthContext, AuthProvider } from './context/AuthContext';
 import Landing from './pages/Landing';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { useEffect, useContext, lazy, Suspense } from 'react';
-import type { ComponentType } from 'react';
-
-// The cinematic 3D welcome (Three.js) is loaded only when that page is opened. The file name is passed as a
-// variable so the app's type-check stays separate from the 3D code (see tsconfig.welcome.json); Vite still bundles it.
-const WELCOME_MODULE = 'WelcomePage';
-const WelcomePage = lazy(() => import(`./welcome/${WELCOME_MODULE}.tsx`) as Promise<{ default: ComponentType }>);
+import { useEffect, useContext } from 'react';
 
 // Admin Route Wrapper
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
@@ -44,7 +38,8 @@ function App() {
       <Router>
         <Routes>
           <Route path="/home" element={<Landing />} />
-          <Route path="/welcome" element={<Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#05060f' }} />}><WelcomePage /></Suspense>} />
+          {/* The former 3D welcome page was removed; old links open the landing page */}
+          <Route path="/welcome" element={<Navigate to="/home" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/oauth-success" element={<OAuthSuccess />} />
