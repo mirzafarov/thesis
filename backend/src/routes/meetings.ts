@@ -30,13 +30,15 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
           include: { user: { select: { id: true, firstName: true, lastName: true, timeZone: true } } },
         },
         polls: { orderBy: { startTime: 'asc' }, include: { votes: { select: { userId: true, vote: true } } } },
+        actionItems: { select: { doneAt: true } },
       },
       orderBy: [{ startDate: 'asc' }, { createdAt: 'desc' }],
     });
 
     res.json(
-      meetings.map(({ polls, ...m }) => ({
+      meetings.map(({ polls, actionItems, ...m }) => ({
         ...m,
+        todos: { total: actionItems.length, done: actionItems.filter(a => a.doneAt).length },
         poll: {
           options: polls.map(p => p.startTime.toISOString()),
           // Vote counts per proposed time, so everyone can see how the poll is going

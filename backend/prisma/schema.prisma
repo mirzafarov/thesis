@@ -47,6 +47,8 @@ model User {
   notifications      NotificationLog[]
   sessions           Session[]
   recoveryCodes      RecoveryCode[]
+  actionItemsAssigned ActionItem[]       @relation("ActionItemAssignee")
+  actionItemsCreated  ActionItem[]       @relation("ActionItemCreator")
 }
 
 // A logged-in device. Every login token points to a session, so a session can be ended remotely
@@ -226,6 +228,27 @@ model Meeting {
   participants MeetingParticipant[]
   polls        MeetingPoll[]
   aiDrafts     AiDraft[]
+  actionItems  ActionItem[]
+}
+
+// A to-do agreed in a meeting ("action item"): who does what by when. The assignee gets an email when it is
+// assigned and a reminder the day before it is due.
+model ActionItem {
+  id          String    @id @default(uuid())
+  meetingId   String
+  title       String
+  assigneeId  String?
+  dueDate     DateTime? // a calendar day (stored as midnight UTC, like activity dates)
+  doneAt      DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  meeting     Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assignee    User?     @relation("ActionItemAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy   User?     @relation("ActionItemCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([assigneeId, doneAt])
 }
 
 enum MeetingCategory {

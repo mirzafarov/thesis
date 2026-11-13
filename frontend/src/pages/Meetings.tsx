@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import SlotFinder from '../components/meetings/SlotFinder';
 import { JoinButton, VideoChoice, VideoSettingsModal, providerName } from '../components/meetings/VideoCall';
 import type { VideoMode } from '../components/meetings/VideoCall';
+import { ActionItemsModal } from '../components/meetings/ActionItems';
 import { browserTimeZone, formatInZone, otherZonesLine, zoneCity } from '../lib/time';
 
 const MAX_SLOTS = 5;
@@ -61,6 +62,7 @@ const Meetings = () => {
   const [finalSlot, setFinalSlot] = useState('');
   const [votes, setVotes] = useState<Record<string, string>>({});
   const [videoMeeting, setVideoMeeting] = useState<any>(null);
+  const [todoMeeting, setTodoMeeting] = useState<any>(null);
 
   // AI State
   const [showAIModal, setShowAIModal] = useState(false);
@@ -262,8 +264,15 @@ const Meetings = () => {
                     <Badge {...badgeOf(meeting)} className="mb-2 px-3 py-2 rounded-pill">
                       {STATUS_LABEL[meeting.status] || meeting.status}
                     </Badge>
-                    <div className="d-flex gap-2 justify-content-end">
+                    <div className="d-flex flex-wrap gap-2 justify-content-end">
                       <JoinButton meeting={meeting} />
+                      {meeting.status !== 'CANCELLED' && (
+                        <Button variant="outline-secondary" size="sm" onClick={() => setTodoMeeting(meeting)}
+                          aria-label={`To-dos for ${meeting.title}: ${meeting.todos?.done ?? 0} of ${meeting.todos?.total ?? 0} done`}>
+                          <i className="bi bi-check2-square me-1" aria-hidden="true"></i>To-dos
+                          {meeting.todos?.total > 0 && <span className="ms-1">{meeting.todos.done}/{meeting.todos.total}</span>}
+                        </Button>
+                      )}
                       {canUseAI(meeting) && (
                         <Button variant="outline-primary" size="sm" onClick={() => openAIModal(meeting.id)}>
                           <i className="bi bi-magic me-1" aria-hidden="true"></i> AI Assistant
@@ -490,6 +499,8 @@ const Meetings = () => {
           </Modal.Footer>
         </Form>
       </Modal>
+
+      <ActionItemsModal meeting={todoMeeting} onHide={() => setTodoMeeting(null)} onChanged={fetchData} />
 
       <VideoSettingsModal meeting={videoMeeting} onHide={() => setVideoMeeting(null)}
         onSaved={() => { setVideoMeeting(null); setNotice({ variant: 'success', text: 'The video call was updated.' }); fetchData(); }} />

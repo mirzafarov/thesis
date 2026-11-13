@@ -93,6 +93,48 @@ export function notifyMeetingRescheduled(meetingId: string, previousStart: Date 
   });
 }
 
+async function loadActionItem(id: string) {
+  return prisma.actionItem.findUnique({
+    where: { id },
+    include: { assignee: person, createdBy: person, meeting: { select: { title: true, project: { select: { name: true } } } } },
+  });
+}
+type LoadedActionItem = NonNullable<Awaited<ReturnType<typeof loadActionItem>>>;
+const actionItemInfo = (a: LoadedActionItem) => ({
+  title: a.title,
+  meetingTitle: a.meeting.title,
+  projectName: a.meeting.project.name,
+  dueDate: a.dueDate,
+  assignedBy: a.createdBy ? fullName(a.createdBy) : undefined,
+});
+
+/** A to-do was assigned to someone: tell them. */
+export function notifyActionItemAssigned(actionItemId: string) {
+  background(async () => {
+    const a = await loadActionItem(actionItemId);
+    if (!a?.assignee || a.doneAt) return;
+    await sendEmail(emails.actionItemAssigned(a.assignee, actionItemInfo(a)));
+  });
+}
+
+/** Open to-dos due tomorrow: remind the assignee once (again if the due date is moved). */
+async function sendActionItemReminders(now: Date) {
+  const startOfTomorrowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  const due = await prisma.actionItem.findMany({
+    where: { doneAt: null, assigneeId: { not: null }, dueDate: { gte: startOfTomorrowUtc, lt: new Date(startOfTomorrowUtc.getTime() + DAY) } },
+    select: { id: true, assigneeId: true, dueDate: true },
+  });
+  let sent = 0;
+  for (const item of due) {
+    if (!(await claim(item.assigneeId!, 'ACTION_ITEM_DUE', `${item.id}:${item.dueDate!.toISOString().slice(0, 10)}`))) continue;
+    const a = await loadActionItem(item.id);
+    if (!a?.assignee) continue;
+    await sendEmail(emails.actionItemDue(a.assignee, actionItemInfo(a)));
+    sent++;
+  }
+  return sent;
+}
+
 /** Reminders 24 hours and 1 hour before scheduled meetings. */
 async function sendMeetingReminders(now: Date) {
   const upcoming = await prisma.meeting.findMany({
@@ -164,23 +206,24 @@ async function checkDelayedActivities(now: Date) {
 
 let running = false;
 export async function runScheduledNotifications(now = new Date()) {
-  if (running) return { reminders: 0, delays: 0, held: 0 };
+  if (running) return { reminders: 0, delays: 0, held: 0, todos: 0 };
   running = true;
   try {
     const reminders = await sendMeetingReminders(now);
     const delays = await checkDelayedActivities(now);
+    const todos = await sendActionItemReminders(now);
     // Meetings whose end time has passed are marked as held.
     const held = await prisma.meeting.updateMany({
       where: { status: { in: [...SCHEDULED] }, endDate: { lt: now } },
       data: { status: 'COMPLETED' },
     });
-    if (reminders || delays || held.count) {
-      console.log(`[notifications] sent ${reminders} reminder(s), ${delays} delay alert(s); ${held.count} meeting(s) marked as held`);
+    if (reminders || delays || todos || held.count) {
+      console.log(`[notifications] sent ${reminders} reminder(s), ${delays} delay alert(s), ${todos} to-do reminder(s); ${held.count} meeting(s) marked as held`);
     }
-    return { reminders, delays, held: held.count };
+    return { reminders, delays, held: held.count, todos };
   } catch (err) {
     console.error('[notifications] scheduled run failed:', err);
-    return { reminders: 0, delays: 0, held: 0 };
+    return { reminders: 0, delays: 0, held: 0, todos: 0 };
   } finally {
     running = false;
   }

@@ -8,7 +8,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { BACKEND, API } from './helpers.mjs';
 
-const SUITES = ['bugfixes', 'gantt', 'email', 'security', 'timezones', 'reports', 'admin', 'video'];
+const SUITES = ['bugfixes', 'gantt', 'email', 'security', 'timezones', 'reports', 'admin', 'video', 'todos'];
 const only = process.argv.slice(2);
 const suites = only.length ? SUITES.filter(s => only.includes(s)) : SUITES;
 

@@ -7,6 +7,7 @@ import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { JoinButton, providerName } from '../components/meetings/VideoCall';
 import { browserTimeZone, formatInZone } from '../lib/time';
+import { DueLabel } from '../components/meetings/ActionItems';
 import './dashboard.css';
 
 const SCHEDULED = ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'];
@@ -39,6 +40,7 @@ const Dashboard = () => {
   const [upcoming, setUpcoming] = useState<any[]>([]);
   const [pendingPolls, setPendingPolls] = useState<any[]>([]);
   const [calendarStatus, setCalendarStatus] = useState<{ connected: boolean; email?: string }>({ connected: false });
+  const [myTodos, setMyTodos] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -55,7 +57,9 @@ const Dashboard = () => {
       axios.get('/api/meetings'),
       axios.get('/api/meetings/polls/pending'),
       axios.get('/api/calendar/status'),
-    ]).then(([projectsRes, meetingsRes, pollsRes, calRes]) => {
+      axios.get('/api/action-items/mine'),
+    ]).then(([projectsRes, meetingsRes, pollsRes, calRes, todosRes]) => {
+      setMyTodos(todosRes.data);
       setProjectsCount(projectsRes.data.length);
       setUpcoming(
         meetingsRes.data
@@ -102,6 +106,15 @@ const Dashboard = () => {
       fetchDashboardData();
     } catch (err) {
       console.error('Failed to disconnect calendar', err);
+    }
+  };
+
+  const markDone = async (id: string) => {
+    try {
+      await axios.patch(`/api/action-items/${id}`, { done: true });
+      setMyTodos(prev => prev.filter(t => t.id !== id));
+    } catch (err) {
+      console.error('Could not mark the to-do as done', err);
     }
   };
 
@@ -186,6 +199,32 @@ const Dashboard = () => {
             </ul>
           )}
           {upcoming.length > 3 && <Link to="/meetings" className="db-link mt-3">All {upcoming.length} meetings <i className="bi bi-arrow-right" aria-hidden="true"></i></Link>}
+        </section>
+
+        <section className="db-card db-panel db-panel-wide" aria-labelledby="db-todos-title">
+          <h2 id="db-todos-title" className="db-panel-title">My to-dos</h2>
+          {myTodos.length === 0 ? (
+            <p className="db-empty"><i className="bi bi-check2-square" aria-hidden="true"></i>
+              {loaded ? 'Nothing assigned to you. To-dos are added from a meeting on the Meetings page.' : 'Loading…'}
+            </p>
+          ) : (
+            <ul className="db-list">
+              {myTodos.map(t => (
+                <li key={t.id} className="db-row">
+                  <div className="db-row-main">
+                    <div className="db-row-title">{t.title}</div>
+                    <div className="db-row-sub db-row-sub-wrap">
+                      <span><i className="bi bi-people" aria-hidden="true"></i> {t.meeting.title} · {t.meeting.project.name}</span>
+                      <DueLabel item={t} />
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-outline-primary btn-sm db-row-action" onClick={() => markDone(t.id)}>
+                    <i className="bi bi-check2 me-1" aria-hidden="true"></i>Mark done
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
     </div>

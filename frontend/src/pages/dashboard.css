@@ -58,6 +58,8 @@
 .db-row-title { font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
 .db-row-sub { font-size: 0.85rem; color: var(--text-secondary); display: flex; align-items: baseline; gap: 6px; }
 .db-row-action { flex-shrink: 0; }
+.db-panel-wide { grid-column: 1 / -1; }
+.db-row-sub-wrap { flex-wrap: wrap; gap: 4px 16px; }
 .db .btn.db-row-action { min-height: 36px; display: inline-flex; align-items: center; font-weight: 600; border-radius: 8px; padding: 0 14px; }
 .db-empty { color: var(--text-secondary); margin: 0; display: flex; align-items: center; gap: 8px; padding: 8px 0; }
 .db-empty a { color: var(--primary); font-weight: 600; }

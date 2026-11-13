@@ -87,6 +87,19 @@ const detailsText = (m: MeetingInfo, tz?: string | null) =>
    m.videoUrl ? `Video call (${m.videoLabel || 'online'}): ${m.videoUrl}` : m.videoLabel ? `Online meeting (${m.videoLabel}): the link comes with the confirmation` : '']
     .filter(Boolean).join('\n');
 
+interface ActionItemInfo { title: string; meetingTitle: string; projectName: string; dueDate: Date | null; assignedBy?: string }
+const actionItemHtml = (a: ActionItemInfo) => `
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;width:100%">
+    <tr><td style="padding:14px 16px;font-size:14px;line-height:1.7">
+      <strong style="font-size:16px">${esc(a.title)}</strong><br>
+      Meeting: ${esc(a.meetingTitle)}<br>
+      Project: ${esc(a.projectName)}<br>
+      Due: <strong>${a.dueDate ? esc(formatDate(a.dueDate)) : 'no date set'}</strong>
+    </td></tr>
+  </table>`;
+const actionItemText = (a: ActionItemInfo) =>
+  [`To-do: ${a.title}`, `Meeting: ${a.meetingTitle}`, `Project: ${a.projectName}`, `Due: ${a.dueDate ? formatDate(a.dueDate) : 'no date set'}`].join('\n');
+
 export const emails = {
   verifyEmail: (user: Person, link: string) => layout({
     to: user.email,
@@ -156,6 +169,25 @@ export const emails = {
     bodyText: `This is a reminder that your meeting starts in about ${when}.\n\n${detailsText(m, user.timeZone)}`,
     // One hour before, the most useful button is the one that joins the call
     button: m.videoUrl && when === '1 hour' ? { label: 'Join the video call', url: m.videoUrl } : { label: 'Open meetings', url: meetingsUrl() },
+  }),
+
+  actionItemAssigned: (user: Person, a: ActionItemInfo) => layout({
+    to: user.email,
+    subject: `New to-do: ${a.title}`,
+    greetingName: user.firstName,
+    bodyHtml: `<p style="margin:0">${esc(a.assignedBy || 'A colleague')} assigned you a to-do from the meeting <strong>${esc(a.meetingTitle)}</strong>.</p>${actionItemHtml(a)}`,
+    bodyText: `${a.assignedBy || 'A colleague'} assigned you a to-do from the meeting "${a.meetingTitle}".\n\n${actionItemText(a)}`,
+    button: { label: 'Open my to-dos', url: `${FRONTEND_URL}/dashboard` },
+  }),
+
+  actionItemDue: (user: Person, a: ActionItemInfo) => layout({
+    to: user.email,
+    subject: `Due tomorrow: ${a.title}`,
+    greetingName: user.firstName,
+    bodyHtml: `<p style="margin:0">A to-do assigned to you is due <strong>tomorrow</strong> and is not marked done yet.</p>${actionItemHtml(a)}`,
+    bodyText: `A to-do assigned to you is due tomorrow and is not marked done yet.\n\n${actionItemText(a)}`,
+    button: { label: 'Open my to-dos', url: `${FRONTEND_URL}/dashboard` },
+    footnote: 'If it is already finished, tick it as done in Safe Zone and no further reminders are sent.',
   }),
 
   activityDelayed: (
