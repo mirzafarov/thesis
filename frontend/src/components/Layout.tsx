@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import BrandLogo from './BrandLogo';
+import OnboardingTour from './OnboardingTour';
 import { Offcanvas, Button } from 'react-bootstrap';
 
 const Layout = () => {
@@ -43,6 +44,9 @@ const Layout = () => {
       <div className="flex-grow-1 p-3 p-md-4 overflow-auto w-100">
         <Outlet />
       </div>
+
+      {/* First-login tour (shown once per account, can be reopened in Settings) */}
+      <OnboardingTour />
     </div>
   );
 };

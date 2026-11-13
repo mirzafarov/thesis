@@ -49,6 +49,13 @@ try {
   check('working day must start before it ends', (await call('PUT', '/api/users/me/preferences', tok.Bob, { workdayStart: 17, workdayEnd: 9 })).status === 400);
   check('valid preferences saved', (await call('PUT', '/api/users/me/preferences', tok.Bob, { timeZone: 'America/New_York', workdayStart: 9, workdayEnd: 17 })).status === 200);
 
+  // First-login tour: not seen yet → shown; after finishing or skipping it is remembered on the account
+  check('new account has not seen the tour', me.data.onboardedAt === null);
+  const ob = await call('POST', '/api/users/me/onboarding', tok.Bob);
+  check('finishing the tour is saved', ob.status === 200 && !!ob.data.onboardedAt);
+  check('tour state is returned by /me (so it is not shown again on another device)', !!(await call('GET', '/api/auth/me', tok.Bob)).data.onboardedAt);
+  check('tour state needs a login', (await call('POST', '/api/users/me/onboarding', null)).status === 401);
+
   const p = await call('POST', '/api/projects', tok.Ana, { name: `TZ ${tag}` });
   const pid = p.data.id;
   for (const n of ['Bob', 'Cid']) await call('POST', `/api/projects/${pid}/members`, tok.Ana, { newMemberUserId: id[n] });

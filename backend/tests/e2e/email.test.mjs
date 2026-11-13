@@ -44,10 +44,13 @@ async function waitFor(email, subjectPart, count = 1) {
 const linkToken = mail => mail?.body.match(/token=([A-Za-z0-9_-]{20,})/)?.[1];
 
 // Run the scheduled checks once, as if it were `nowIso`.
+// Only this test's projects: a run "as if it were" another time must never touch real meetings or activities.
+let schedulerScope = [];
 function runScheduler(nowIso) {
+  if (!schedulerScope.length) throw new Error('runScheduler needs the test project ids (schedulerScope)');
   const script = path.join(BACKEND, '_run_scheduler.ts');
   fs.writeFileSync(script, `import { runScheduledNotifications } from './src/lib/notifications';
-runScheduledNotifications(new Date(${JSON.stringify(nowIso)})).then(r => { console.log(JSON.stringify(r)); process.exit(0); });`);
+runScheduledNotifications(new Date(${JSON.stringify(nowIso)}), { projectIds: ${JSON.stringify(schedulerScope)} }).then(r => { console.log(JSON.stringify(r)); process.exit(0); });`);
   try {
     const out = execSync('npx tsx _run_scheduler.ts', { cwd: BACKEND, encoding: 'utf8', env: { ...process.env, SMTP_HOST: '' } });
     return JSON.parse(out.trim().split('\n').filter(l => l.startsWith('{')).pop());
@@ -118,6 +121,7 @@ try {
   // ---- Meeting emails ----
   const p = await call('POST', '/api/projects', tokens.C, { name: `Mail test <script>${tag}</script>` });
   const pid = p.data.id;
+  schedulerScope = [pid];
   await call('POST', `/api/projects/${pid}/members`, tokens.C, { newMemberUserId: dId });
 
   const start = new Date(Date.now() + 23.5 * 3600e3); start.setSeconds(0, 0);

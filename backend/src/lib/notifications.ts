@@ -12,6 +12,10 @@ const DAY = 24 * HOUR;
 const person = { select: { id: true, email: true, firstName: true, lastName: true, timeZone: true } } as const;
 const fullName = (u: { firstName: string; lastName: string }) => `${u.firstName} ${u.lastName}`;
 
+// Optional limit to some projects (used by the tests)
+type Scope = { projectIds: string[] } | undefined;
+const inScope = (scope: Scope) => (scope ? { projectId: { in: scope.projectIds } } : {});
+
 /** Record that a notification was sent. Returns false if it had already been sent (so it is skipped). */
 async function claim(userId: string, type: string, refId: string) {
   try {
@@ -132,10 +136,13 @@ export function notifyActionItemAssigned(actionItemId: string) {
 }
 
 /** Open to-dos due tomorrow: remind the assignee once (again if the due date is moved). */
-async function sendActionItemReminders(now: Date) {
+async function sendActionItemReminders(now: Date, scope: Scope) {
   const startOfTomorrowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
   const due = await prisma.actionItem.findMany({
-    where: { doneAt: null, assigneeId: { not: null }, dueDate: { gte: startOfTomorrowUtc, lt: new Date(startOfTomorrowUtc.getTime() + DAY) } },
+    where: {
+      doneAt: null, assigneeId: { not: null }, dueDate: { gte: startOfTomorrowUtc, lt: new Date(startOfTomorrowUtc.getTime() + DAY) },
+      ...(scope ? { meeting: { projectId: { in: scope.projectIds } } } : {}),
+    },
     select: { id: true, assigneeId: true, dueDate: true },
   });
   let sent = 0;
@@ -150,9 +157,9 @@ async function sendActionItemReminders(now: Date) {
 }
 
 /** Reminders 24 hours and 1 hour before scheduled meetings. */
-async function sendMeetingReminders(now: Date) {
+async function sendMeetingReminders(now: Date, scope: Scope) {
   const upcoming = await prisma.meeting.findMany({
-    where: { status: { in: [...SCHEDULED] }, startDate: { gt: now, lte: new Date(now.getTime() + DAY) } },
+    where: { status: { in: [...SCHEDULED] }, startDate: { gt: now, lte: new Date(now.getTime() + DAY) }, ...inScope(scope) },
     select: { id: true, startDate: true },
   });
 
@@ -181,10 +188,10 @@ async function sendMeetingReminders(now: Date) {
  * Critical activities whose end date has passed without being completed:
  * mark them DELAYED and notify the responsible person and the project managers (once per end date).
  */
-async function checkDelayedActivities(now: Date) {
+async function checkDelayedActivities(now: Date, scope: Scope) {
   const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const late = await prisma.activity.findMany({
-    where: { isCritical: true, status: { not: 'COMPLETED' }, endDate: { lt: startOfTodayUtc } },
+    where: { isCritical: true, status: { not: 'COMPLETED' }, endDate: { lt: startOfTodayUtc }, ...inScope(scope) },
     include: {
       responsible: person,
       project: { select: { id: true, name: true, members: { where: { role: 'MANAGER' }, include: { user: person } } } },
@@ -219,16 +226,20 @@ async function checkDelayedActivities(now: Date) {
 }
 
 let running = false;
-export async function runScheduledNotifications(now = new Date()) {
+/**
+ * One run of the scheduled checks. The server runs it for everything; tests pass `scope` (their own projects) so
+ * a run "as if it were" another time can never change or notify anybody else's meetings, activities or to-dos.
+ */
+export async function runScheduledNotifications(now = new Date(), scope?: { projectIds: string[] }) {
   if (running) return { reminders: 0, delays: 0, held: 0, todos: 0 };
   running = true;
   try {
-    const reminders = await sendMeetingReminders(now);
-    const delays = await checkDelayedActivities(now);
-    const todos = await sendActionItemReminders(now);
+    const reminders = await sendMeetingReminders(now, scope);
+    const delays = await checkDelayedActivities(now, scope);
+    const todos = await sendActionItemReminders(now, scope);
     // Meetings whose end time has passed are marked as held.
     const held = await prisma.meeting.updateMany({
-      where: { status: { in: [...SCHEDULED] }, endDate: { lt: now } },
+      where: { status: { in: [...SCHEDULED] }, endDate: { lt: now }, ...inScope(scope) },
       data: { status: 'COMPLETED' },
     });
     if (reminders || delays || todos || held.count) {

@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { Container, Card, Button, Modal, Badge, Table, Form, Alert, Row, Col } from 'react-bootstrap';
+import { START_TOUR_EVENT } from '../components/OnboardingTour';
 import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
 import TwoFactorSetup, { RecoveryCodes } from '../components/security/TwoFactorSetup';
@@ -120,7 +121,7 @@ const formatIp = (ip: string | null) => {
 const when = (iso: string) => new Date(iso).toLocaleString();
 
 const Profile = () => {
-  const { logout } = useContext(AuthContext);
+  const { logout, user } = useContext(AuthContext);
   const [me, setMe] = useState<Me | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
@@ -290,6 +291,18 @@ const Profile = () => {
           {me && <WorkingHoursCard key={`${me.timeZone}-${me.workdayStart}-${me.workdayEnd}`} me={me} onSaved={load} />}
 
           {/* Account and GDPR */}
+          {user?.role !== 'ADMIN' && (
+            <Card className="mb-4 saas-card">
+              <Card.Header className="bg-transparent py-3"><h5 className="mb-0 saas-heading"><i className="bi bi-signpost-2 me-2" aria-hidden="true"></i>Getting started</h5></Card.Header>
+              <Card.Body className="d-flex flex-wrap gap-3 justify-content-between align-items-center">
+                <span style={{ color: 'var(--text-secondary)' }}>A one-minute tour of the main parts of Safe Zone.</span>
+                <Button variant="outline-primary" onClick={() => window.dispatchEvent(new Event(START_TOUR_EVENT))}>
+                  <i className="bi bi-play-circle me-2" aria-hidden="true"></i>Take the tour
+                </Button>
+              </Card.Body>
+            </Card>
+          )}
+
           <Card className="mb-4 saas-card">
             <Card.Header className="bg-transparent py-3"><h5 className="mb-0 saas-heading"><i className="bi bi-person-badge me-2" aria-hidden="true"></i>Account & privacy (GDPR)</h5></Card.Header>
             <Card.Body>

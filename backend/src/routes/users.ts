@@ -7,6 +7,17 @@ import { isValidTimeZone } from '../lib/timezones';
 const router = express.Router();
 
 // Your time zone and working hours (used to find meeting times and to show times in your zone).
+// The first-login tour was finished or skipped: do not show it automatically again (it can be reopened in Settings)
+router.post('/me/onboarding', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const user = await prisma.user.update({ where: { id: req.user.userId }, data: { onboardedAt: new Date() }, select: { onboardedAt: true } });
+    res.json(user);
+  } catch (error) {
+    console.error('Error saving onboarding state:', error);
+    res.status(500).json({ error: 'Failed to save' });
+  }
+});
+
 router.put('/me/preferences', authenticate, async (req: AuthRequest, res) => {
   try {
     const { timeZone, workdayStart, workdayEnd } = req.body;

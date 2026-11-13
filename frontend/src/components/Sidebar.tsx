@@ -27,16 +27,16 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavClick }) => {
       <Nav className="flex-column mb-auto mt-md-0 mt-2 saas-sidebar-nav">
         {user?.role !== 'ADMIN' && (
           <>
-            <NavLink to="/dashboard" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
+            <NavLink to="/dashboard" data-tour="dashboard" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
               <i className="bi bi-grid-1x2 fs-5 me-3" aria-hidden="true"></i> Dashboard
             </NavLink>
-            <NavLink to="/projects" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
+            <NavLink to="/projects" data-tour="projects" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
               <i className="bi bi-folder fs-5 me-3" aria-hidden="true"></i> Projects
             </NavLink>
-            <NavLink to="/meetings" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
+            <NavLink to="/meetings" data-tour="meetings" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
               <i className="bi bi-calendar-event fs-5 me-3" aria-hidden="true"></i> Meetings
             </NavLink>
-            <NavLink to="/reports" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
+            <NavLink to="/reports" data-tour="reports" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
               <i className="bi bi-bar-chart-line fs-5 me-3" aria-hidden="true"></i> Reports
             </NavLink>
           </>
@@ -59,7 +59,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavClick }) => {
           </>
         )}
 
-        <NavLink to="/profile" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
+        <NavLink to="/profile" data-tour="settings" className="nav-link mb-2 rounded-3 py-3 px-4 d-flex align-items-center fw-semibold" style={{ fontSize: '16px' }} onClick={onNavClick}>
           <i className="bi bi-person-gear fs-5 me-3" aria-hidden="true"></i> {user?.role === 'ADMIN' ? 'My Account' : 'Settings'}
         </NavLink>
       </Nav>

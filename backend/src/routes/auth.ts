@@ -379,6 +379,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
       timeZone: user.timeZone,
       workdayStart: user.workdayStart,
       workdayEnd: user.workdayEnd,
+      onboardedAt: user.onboardedAt,
     });
   } catch (error) {
     console.error(error);

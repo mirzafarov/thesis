@@ -47,6 +47,7 @@ model User {
   notifications      NotificationLog[]
   sessions           Session[]
   recoveryCodes      RecoveryCode[]
+  onboardedAt        DateTime?          // when the user finished or skipped the first-login tour
   actionItemsAssigned ActionItem[]       @relation("ActionItemAssignee")
   actionItemsCreated  ActionItem[]       @relation("ActionItemCreator")
 }

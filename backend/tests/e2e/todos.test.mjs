@@ -24,10 +24,13 @@ async function waitForMail(email, subjectPart) {
   return [];
 }
 // Run the scheduled checks once, as if it were `nowIso` (same approach as the email suite).
+// Only this test's projects: a run "as if it were" another time must never touch real meetings or activities.
+let schedulerScope = [];
 function runScheduler(nowIso) {
+  if (!schedulerScope.length) throw new Error('runScheduler needs the test project ids (schedulerScope)');
   const script = path.join(BACKEND, '_run_scheduler_todos.ts');
   fs.writeFileSync(script, `import { runScheduledNotifications } from './src/lib/notifications';
-runScheduledNotifications(new Date(${JSON.stringify(nowIso)})).then(r => { console.log(JSON.stringify(r)); process.exit(0); });`);
+runScheduledNotifications(new Date(${JSON.stringify(nowIso)}), { projectIds: ${JSON.stringify(schedulerScope)} }).then(r => { console.log(JSON.stringify(r)); process.exit(0); });`);
   try {
     const out = execSync('npx tsx _run_scheduler_todos.ts', { cwd: BACKEND, encoding: 'utf8', env: { ...process.env, SMTP_HOST: '' } });
     return JSON.parse(out.trim().split('\n').filter(l => l.startsWith('{')).pop());
@@ -55,6 +58,7 @@ try {
     tok[n] = l.data.token; id[n] = l.data.user.id;
   }
   const pid = (await call('POST', '/api/projects', tok.Ana, { name: `Todos ${tag}` })).data.id;
+  schedulerScope = [pid];
   await call('POST', `/api/projects/${pid}/members`, tok.Ana, { newMemberUserId: id.Bob, role: 'EMPLOYEE' });
   await call('POST', `/api/projects/${pid}/members`, tok.Ana, { newMemberUserId: id.Cid, role: 'OBSERVER' });
   const slot = new Date(Date.now() + 2 * 86400e3); slot.setUTCMinutes(0, 0, 0);

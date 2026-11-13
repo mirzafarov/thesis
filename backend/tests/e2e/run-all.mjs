@@ -23,9 +23,22 @@ try {
 const { PrismaClient } = createRequire(path.join(BACKEND, 'package.json'))('@prisma/client');
 const prisma = new PrismaClient();
 const savedSettings = await prisma.systemSetting.findMany();
+// Safety net: the tests must never change existing (real or demo) data. Remember every existing meeting's and
+// activity's status now and compare after the run.
+const snapshot = async () => new Map([
+  ...(await prisma.meeting.findMany({ select: { id: true, status: true, title: true } })).map(m => [`meeting ${m.id}`, `${m.title}: ${m.status}`]),
+  ...(await prisma.activity.findMany({ select: { id: true, status: true, title: true } })).map(a => [`activity ${a.id}`, `${a.title}: ${a.status}`]),
+]);
+const before = await snapshot();
 await prisma.systemSetting.deleteMany();
 const runStarted = new Date();
 const restoreSettings = async () => {
+  const after = await snapshot();
+  const changed = [...before].filter(([k, v]) => after.has(k) && after.get(k) !== v).map(([k, v]) => `${v} -> ${after.get(k).split(': ').pop()}`);
+  if (changed.length) {
+    console.error(`\nFAIL  the tests changed ${changed.length} existing record(s):\n  ${changed.join('\n  ')}`);
+    results.push({ name: 'real data', passed: 0, failed: changed.length });
+  }
   await prisma.systemSetting.deleteMany();
   for (const row of savedSettings) await prisma.systemSetting.create({ data: row });
   // Remove the audit entries the test users produced (their accounts were deleted, so the entries lost their user).
