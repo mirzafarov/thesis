@@ -18,7 +18,8 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /**
  * Report data for the projects you are in.
- * Query: projectIds (comma list, default all), from + to (YYYY-MM-DD in your time zone), category, userIds.
+ * Query: projectIds (comma list, default all), from + to (YYYY-MM-DD in your time zone), category, userIds,
+ * phaseIds (comma list: only meetings linked to activities of these project phases, and only those activities).
  * Managers see everything in their projects; other members only see their own meetings and hours.
  */
 router.get('/', authenticate, async (req: AuthRequest, res) => {
@@ -46,15 +47,25 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const projectIds = scoped.map(m => m.projectId);
     const peopleFilter = listParam(req.query.userIds);
 
+    // Phases of the selected projects (for the filter list); unknown or foreign phase ids are ignored
+    const phases = await prisma.phase.findMany({
+      where: { projectId: { in: projectIds } },
+      select: { id: true, name: true, projectId: true, project: { select: { name: true } } },
+      orderBy: [{ projectId: 'asc' }, { startDate: 'asc' }],
+    });
+    const phaseFilter = listParam(req.query.phaseIds).filter(id => phases.some(ph => ph.id === id));
+
     const meetings = await prisma.meeting.findMany({
       where: {
         projectId: { in: projectIds },
         status: { in: [...HELD] },
         startDate: { gte: start, lt: end },
         ...(category && category !== 'ALL' ? { category: category as any } : {}),
+        ...(phaseFilter.length ? { activity: { phaseId: { in: phaseFilter } } } : {}),
       },
       include: {
         project: { select: { name: true } },
+        activity: { select: { title: true, phase: { select: { name: true } } } },
         participants: { include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } } },
         aiDrafts: { where: { draftType: 'SUMMARY' }, orderBy: { createdAt: 'desc' }, take: 1, select: { content: true } },
       },
@@ -95,6 +106,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     const activities = await prisma.activity.findMany({
       where: {
         projectId: { in: projectIds },
+        ...(phaseFilter.length ? { phaseId: { in: phaseFilter } } : {}),
         OR: [
           { startDate: null },
           { AND: [{ startDate: { lt: end } }, { OR: [{ endDate: null }, { endDate: { gte: start } }] }] },
@@ -134,7 +146,10 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 
     res.json({
       period: { from, to, timeZone: tz },
-      filters: { projectIds, category: category || 'ALL', userIds: peopleFilter },
+      filters: {
+        projectIds, category: category || 'ALL', userIds: peopleFilter, phaseIds: phaseFilter,
+        phaseNames: phases.filter(ph => phaseFilter.includes(ph.id)).map(ph => ph.name),
+      },
       generatedAt: new Date().toISOString(),
       months: [...months].sort(),
       totals: {
@@ -157,6 +172,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
         durationMin: m.durationMin,
         status: m.status,
         participants: m.participants.map(p => `${p.user.firstName} ${p.user.lastName}`),
+        phase: m.activity?.phase?.name ?? null,
         // "Results": the latest AI meeting summary (minutes), if one was written
         minutes: m.aiDrafts[0]?.content ?? null,
       })),
@@ -170,6 +186,8 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
         startDate: a.startDate,
         endDate: a.endDate,
       })),
+      // Phases you can filter by (of the selected projects)
+      availablePhases: phases.map(ph => ({ id: ph.id, name: ph.name, projectId: ph.projectId, projectName: ph.project.name })),
       // People you can filter by: everyone in projects you manage, otherwise only you
       availablePeople: await prisma.user.findMany({
         where: {

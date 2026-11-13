@@ -23,13 +23,16 @@ function preset(name: 'week' | 'month' | 'lastMonth' | 'quarter'): [string, stri
 const STATUS_BADGE: Record<string, string> = { COMPLETED: 'success', IN_PROGRESS: 'primary', PENDING: 'secondary', DELAYED: 'danger' };
 const STATUS_TEXT: Record<string, string> = { COMPLETED: 'Completed', IN_PROGRESS: 'In progress', PENDING: 'Pending', DELAYED: 'Delayed' };
 
+interface PhaseOption { id: string; name: string; projectId: string; projectName: string }
+
 const Reports = () => {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [[from, to], setPeriod] = useState<[string, string]>(preset('month'));
   const [category, setCategory] = useState('ALL');
   const [people, setPeople] = useState<string[]>([]);
-  const [report, setReport] = useState<(ReportData & { availablePeople: Person[] }) | null>(null);
+  const [phases, setPhases] = useState<string[]>([]);
+  const [report, setReport] = useState<(ReportData & { availablePeople: Person[]; availablePhases: PhaseOption[] }) | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState('');
   const [error, setError] = useState('');
@@ -43,7 +46,7 @@ const Reports = () => {
     setError('');
     try {
       const res = await axios.get('/api/reports', {
-        params: { from, to, category, projectIds: selectedProjects.join(','), userIds: people.join(',') },
+        params: { from, to, category, projectIds: selectedProjects.join(','), userIds: people.join(','), phaseIds: phases.join(',') },
       });
       setReport(res.data);
     } catch (err: any) {
@@ -51,7 +54,10 @@ const Reports = () => {
     } finally {
       setLoading(false);
     }
-  }, [from, to, category, selectedProjects, people]);
+  }, [from, to, category, selectedProjects, people, phases]);
+
+  // Phases belong to projects: when the project selection changes, the phase selection starts over
+  useEffect(() => { setPhases([]); }, [selectedProjects]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -142,6 +148,27 @@ const Reports = () => {
                 {Object.entries(CATEGORY_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </Form.Select>
             </Col>
+            {report && report.availablePhases.length > 0 && (
+              <Col xs={12}>
+                <Form.Label className="fw-semibold small text-uppercase text-muted">Project phases</Form.Label>
+                <div className="d-flex flex-wrap gap-2">
+                  <Button size="sm" variant={phases.length === 0 ? 'primary' : 'outline-secondary'} onClick={() => setPhases([])}>All phases</Button>
+                  {report.availablePhases.map(ph => (
+                    <Button key={ph.id} size="sm" variant={phases.includes(ph.id) ? 'primary' : 'outline-secondary'}
+                      aria-pressed={phases.includes(ph.id)} onClick={() => toggle(phases, setPhases, ph.id)}>
+                      {ph.name}
+                      {/* with several projects, say which project the phase belongs to */}
+                      {new Set(report.availablePhases.map(x => x.projectId)).size > 1 && <span className="opacity-75"> · {ph.projectName}</span>}
+                    </Button>
+                  ))}
+                </div>
+                {phases.length > 0 && (
+                  <div className="small mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    Only meetings linked to an activity in these phases, and only those activities, are included.
+                  </div>
+                )}
+              </Col>
+            )}
             {report && report.availablePeople.length > 1 && (
               <Col xs={12}>
                 <Form.Label className="fw-semibold small text-uppercase text-muted">People</Form.Label>

@@ -1,8 +1,15 @@
 // PDF and Excel export of a report. Libraries are loaded only when exporting (keeps the app fast).
 
+/** Selected phases for the PDF header line (shortened so the line fits the page). */
+const phaseLabel = (r: ReportData) => {
+  const names = r.filters.phaseNames ?? [];
+  const text = names.join(', ');
+  return text.length > 60 ? `${text.slice(0, 57)}…` : text;
+};
+
 export interface ReportData {
   period: { from: string; to: string; timeZone: string };
-  filters: { category: string };
+  filters: { category: string; phaseNames?: string[] };
   generatedAt: string;
   months: string[];
   totals: { meetings: number; meetingHours: number; personHours: number; people: number; projects: number };
@@ -76,7 +83,7 @@ export async function exportPdf(r: ReportData, scopeLabel: string) {
   doc.setTextColor(90, 100, 115);
   doc.text([
     `Period: ${fmtDate(r.period.from + 'T00:00:00Z')} – ${fmtDate(r.period.to + 'T00:00:00Z')} (${r.period.timeZone})`,
-    `Projects: ${scopeLabel}   ·   Meeting type: ${CATEGORY_LABEL[r.filters.category] || r.filters.category}`,
+    `Projects: ${scopeLabel}   ·   Meeting type: ${CATEGORY_LABEL[r.filters.category] || r.filters.category}${phaseLabel(r) ? `   ·   Phases: ${phaseLabel(r)}` : ''}`,
     `Generated: ${fmtDateTime(r.generatedAt, r.period.timeZone)}`,
   ], 12, 41);
 
@@ -175,6 +182,7 @@ export async function exportXlsx(r: ReportData, scopeLabel: string) {
     ['Period', `${r.period.from} to ${r.period.to} (${r.period.timeZone})`],
     ['Projects', scopeLabel],
     ['Meeting type', CATEGORY_LABEL[r.filters.category] || r.filters.category],
+    ['Project phases', r.filters.phaseNames?.length ? r.filters.phaseNames.join(', ') : 'All phases'],
     ['Generated', new Date(r.generatedAt)],
     [],
     ['Meetings', r.totals.meetings],

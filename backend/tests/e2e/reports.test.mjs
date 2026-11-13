@@ -97,6 +97,27 @@ try {
   check('invalid period rejected', (await call('GET', '/api/reports' + q({ from: '2026-11-30', to: '2026-10-01' }), tok.M)).status === 400);
   check('invalid type rejected', (await call('GET', '/api/reports' + q({ from: '2026-10-01', to: '2026-11-30', category: 'PARTY' }), tok.M)).status === 400);
 
+  // ---- Phase filter: meetings linked to activities of the chosen phases ----
+  const design = await prisma.phase.create({ data: { projectId: p1, name: 'Design', startDate: new Date('2026-10-01'), endDate: new Date('2026-10-31') } });
+  const build = await prisma.phase.create({ data: { projectId: p1, name: 'Build', startDate: new Date('2026-11-01'), endDate: new Date('2026-11-30') } });
+  const foreign = await prisma.phase.create({ data: { projectId: p2, name: 'Secret phase', startDate: new Date('2026-10-01'), endDate: new Date('2026-10-31') } });
+  const reqAct = await prisma.activity.findFirst({ where: { projectId: p1, title: 'Requirements' } });
+  const backAct = await prisma.activity.findFirst({ where: { projectId: p1, title: 'Backend' } });
+  await prisma.activity.update({ where: { id: reqAct.id }, data: { phaseId: design.id } });
+  await prisma.activity.update({ where: { id: backAct.id }, data: { phaseId: build.id } });
+  await prisma.meeting.update({ where: { id: m1 }, data: { activityId: reqAct.id } }); // Strategy kickoff → Design
+  r = await call('GET', '/api/reports' + q({ from: '2026-10-01', to: '2026-11-30' }), tok.M);
+  check('phase options: the project\'s phases only', r.data.availablePhases.length === 2 && r.data.availablePhases.every(ph => ph.projectId === p1), JSON.stringify(r.data.availablePhases.map(p => p.name)));
+  check('meeting list shows the phase of the linked activity', r.data.meetings.find(m => m.title === 'Strategy kickoff')?.phase === 'Design');
+  r = await call('GET', '/api/reports' + q({ from: '2026-10-01', to: '2026-11-30', phaseIds: design.id }), tok.M);
+  check('phase filter: only meetings of that phase', r.data.totals.meetings === 1 && r.data.meetings[0].title === 'Strategy kickoff', String(r.data.totals.meetings));
+  check('phase filter: only activities of that phase', r.data.activities.length === 1 && r.data.activities[0].title === 'Requirements');
+  check('phase filter: named in the report filters', JSON.stringify(r.data.filters.phaseNames) === '["Design"]');
+  r = await call('GET', '/api/reports' + q({ from: '2026-10-01', to: '2026-11-30', phaseIds: `${design.id},${build.id}` }), tok.M);
+  check('several phases: activities of both', r.data.activities.length === 2 && r.data.totals.meetings === 1);
+  r = await call('GET', '/api/reports' + q({ from: '2026-10-01', to: '2026-11-30', phaseIds: foreign.id }), tok.M);
+  check('a phase of someone else\'s project is ignored', r.status === 200 && r.data.filters.phaseIds.length === 0 && r.data.totals.meetings === 3);
+
   // ---- Employee sees only their own data ----
   r = await call('GET', '/api/reports' + q({ from: '2026-10-01', to: '2026-11-30' }), tok.E);
   check('employee: only meetings they attended', r.data.totals.meetings === 2, String(r.data.totals.meetings));
