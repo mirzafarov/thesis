@@ -48,7 +48,11 @@ model User {
   notifications      NotificationLog[]
   sessions           Session[]
   recoveryCodes      RecoveryCode[]
-  onboardedAt        DateTime?          // when the user finished or skipped the first-login tour
+  onboardedAt        DateTime?
+  agendaConfirmations AgendaConfirmation[]
+  meetingNotes       MeetingNote[]      @relation("MeetingNoteAuthor")
+  emailGroups        EmailGroupMember[]
+  groupMessages      GroupMessage[]     @relation("GroupMessageSender")          // when the user finished or skipped the first-login tour
   actionItemsAssigned ActionItem[]       @relation("ActionItemAssignee")
   actionItemsCreated  ActionItem[]       @relation("ActionItemCreator")
 }
@@ -141,6 +145,7 @@ model Project {
   phases      Phase[]
   activities  Activity[]
   meetings    Meeting[]
+  emailGroups EmailGroup[]
 }
 
 // Main phase / milestone of a project (Project -> Phase -> Activity -> Meeting), shown on the Gantt chart.
@@ -235,6 +240,10 @@ model Meeting {
   // "jitsi", "google_meet" or "custom" (e.g. a Zoom/Teams link). null = in person.
   videoProvider String?
   videoUrl      String?
+  agenda          String?   // encrypted (see lib/secureText); written by the organizer or a manager
+  agendaUpdatedAt DateTime?
+  notesOpen       Boolean   @default(true) // may participants add notes to the minutes?
+  isPrivate       Boolean   @default(false) // only the invited people see it (not even other project managers)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -246,6 +255,34 @@ model Meeting {
   polls        MeetingPoll[]
   aiDrafts     AiDraft[]
   actionItems  ActionItem[]
+  notes        MeetingNote[]
+  agendaConfirmations AgendaConfirmation[]
+}
+
+// A participant confirmed the current agenda (reset when the agenda changes)
+model AgendaConfirmation {
+  id          String   @id @default(uuid())
+  meetingId   String
+  userId      String
+  confirmedAt DateTime @default(now())
+
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+}
+
+// A note added to a meeting's minutes. Content is encrypted at rest.
+model MeetingNote {
+  id        String   @id @default(uuid())
+  meetingId String
+  authorId  String?
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  author    User?    @relation("MeetingNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
 }
 
 // A to-do agreed in a meeting ("action item"): who does what by when. The assignee gets an email when it is
@@ -379,3 +416,42 @@ model AuditLog {
   user      User?    @relation(fields: [userId], references: [id])
 }
 
+
+// Project email group (like Google Groups): managers choose the members; a message sent from Safe Zone is
+// emailed to every member and kept (encrypted) in the group's history.
+model EmailGroup {
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  alias       String   @unique // e.g. smart-city-steering@groups.safezone (the group's address label)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members     EmailGroupMember[]
+  messages    GroupMessage[]
+}
+
+model EmailGroupMember {
+  id      String     @id @default(uuid())
+  groupId String
+  userId  String
+
+  group   EmailGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+}
+
+model GroupMessage {
+  id         String     @id @default(uuid())
+  groupId    String
+  senderId   String?
+  subject    String     // encrypted
+  body       String     // encrypted
+  recipients Int        // how many members it was emailed to
+  createdAt  DateTime   @default(now())
+
+  group      EmailGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender     User?      @relation("GroupMessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+}

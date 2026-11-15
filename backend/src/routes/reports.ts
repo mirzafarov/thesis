@@ -1,6 +1,7 @@
 import express from 'express';
 import { prisma } from '../lib/prisma';
 import { audit } from '../lib/audit';
+import { open } from '../lib/secureText';
 import { dayRange, localParts, zoneOf } from '../lib/timezones';
 import { authenticate } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
@@ -74,7 +75,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 
     // Non-managers only see meetings they took part in.
     const visible = meetings.filter(m =>
-      managerOf.has(m.projectId) || m.participants.some(p => p.userId === userId)
+      (managerOf.has(m.projectId) && !m.isPrivate) || m.participants.some(p => p.userId === userId)
     );
     // People filter: keep meetings with at least one of the selected people.
     const filtered = peopleFilter.length
@@ -174,7 +175,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
         participants: m.participants.map(p => `${p.user.firstName} ${p.user.lastName}`),
         phase: m.activity?.phase?.name ?? null,
         // "Results": the latest AI meeting summary (minutes), if one was written
-        minutes: m.aiDrafts[0]?.content ?? null,
+        minutes: open(m.aiDrafts[0]?.content ?? null),
       })),
       activities: activities.map(a => ({
         project: a.project.name,

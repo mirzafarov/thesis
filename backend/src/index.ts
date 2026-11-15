@@ -7,6 +7,8 @@ import authRoutes from './routes/auth';
 import projectRoutes from './routes/projects';
 import meetingRoutes from './routes/meetings';
 import actionItemRoutes from './routes/actionItems';
+import meetingNoteRoutes from './routes/meetingNotes';
+import groupRoutes from './routes/groups';
 import aiRoutes from './routes/ai';
 import userRoutes from './routes/users';
 import calendarRoutes from './routes/calendar';
@@ -34,6 +36,8 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/projects', projectRoutes);
+app.use('/api', groupRoutes); // /api/projects/:id/groups and /api/groups/...
+app.use('/api', meetingNoteRoutes); // /api/meetings/:id/notes, /agenda ... and /api/meeting-notes/...
 app.use('/api', actionItemRoutes); // /api/meetings/:id/action-items and /api/action-items/...
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/ai', aiRoutes);

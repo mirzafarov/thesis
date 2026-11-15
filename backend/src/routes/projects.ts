@@ -120,7 +120,10 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
           include: {
             responsible: { select: { id: true, firstName: true, lastName: true } },
             meetings: {
-              select: { id: true, title: true, startDate: true, endDate: true, status: true, actionItems: { select: { doneAt: true } } },
+              select: {
+                id: true, title: true, startDate: true, endDate: true, status: true, isPrivate: true,
+                participants: { select: { userId: true } }, actionItems: { select: { doneAt: true } },
+              },
             },
             predecessors: { select: { predecessorId: true } },
           },
@@ -133,11 +136,13 @@ router.get('/:id', authenticate, async (req: AuthRequest, res) => {
     res.json({
       ...project,
       activities: project.activities.map(({ predecessors, meetings, ...a }) => {
+        // Private meetings: people who are not invited only see that there is a meeting, not its title or to-dos
+        const visible = (m: (typeof meetings)[number]) => !m.isPrivate || m.participants.some(p => p.userId === req.user.userId);
         // To-dos agreed in this activity's meetings: their progress is shown on the activity's Gantt bar
-        const todos = meetings.flatMap(m => m.actionItems);
+        const todos = meetings.filter(visible).flatMap(m => m.actionItems);
         return {
           ...a,
-          meetings: meetings.map(({ actionItems, ...m }) => m),
+          meetings: meetings.map(({ actionItems, participants, ...m }) => (visible({ ...m, actionItems, participants }) ? m : { ...m, title: 'Private meeting' })),
           dependsOn: predecessors.map(p => p.predecessorId),
           todos: { total: todos.length, done: todos.filter(t => t.doneAt).length },
         };

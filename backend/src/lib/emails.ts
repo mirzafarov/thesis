@@ -190,6 +190,17 @@ export const emails = {
     footnote: 'If it is already finished, tick it as done in Safe Zone and no further reminders are sent.',
   }),
 
+  groupMessage: (user: Person, g: { groupName: string; alias: string; projectName: string; senderName: string; subject: string; body: string }) => layout({
+    to: user.email,
+    subject: `[${g.groupName}] ${g.subject}`,
+    greetingName: user.firstName,
+    bodyHtml: `<p style="margin:0 0 12px"><strong>${esc(g.senderName)}</strong> wrote to the group <strong>${esc(g.groupName)}</strong> (${esc(g.alias)}) in project <strong>${esc(g.projectName)}</strong>:</p>
+      <div style="margin:0 0 16px;padding:14px 16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;white-space:pre-wrap">${esc(g.body)}</div>`,
+    bodyText: `${g.senderName} wrote to the group ${g.groupName} (${g.alias}) in project ${g.projectName}:\n\n${g.body}`,
+    button: { label: 'Open the group in Safe Zone', url: `${FRONTEND_URL}/projects` },
+    footnote: 'You receive this because you are a member of this project group. Reply in Safe Zone so the message is kept in the group history.',
+  }),
+
   activityDelayed: (
     user: Person,
     a: { title: string; projectName: string; projectId: string; endDate: Date; responsibleName: string | null },

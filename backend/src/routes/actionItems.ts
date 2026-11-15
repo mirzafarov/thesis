@@ -35,7 +35,8 @@ async function accessFor(meetingId: string, userId: string) {
   if (!meeting) return null;
   const membership = await getMembership(userId, meeting.projectId);
   const isParticipant = meeting.participants.some(p => p.userId === userId);
-  const isManager = membership?.role === 'MANAGER';
+  // Managers can oversee their project's meetings, except private ones they are not invited to
+  const isManager = membership?.role === 'MANAGER' && !meeting.isPrivate;
   return {
     meeting,
     canView: isParticipant || isManager,

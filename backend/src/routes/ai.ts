@@ -2,6 +2,7 @@ import express from 'express';
 import { prisma } from '../lib/prisma';
 import { generateText, isAiConfigured } from '../lib/ai';
 import { isAiLanguage, meetingContext, writingRules } from '../lib/aiContext';
+import { seal } from '../lib/secureText';
 import { authenticate, getMembership } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 
@@ -42,15 +43,16 @@ router.post('/generate', authenticate, async (req: AuthRequest, res) => {
     const { meeting } = context;
     const membership = await getMembership(userId, meeting.projectId);
     const isParticipant = meeting.participants.some(p => p.userId === userId);
-    if (!membership || (!isParticipant && membership.role !== 'MANAGER')) {
+    if (!membership || (!isParticipant && (membership.role !== 'MANAGER' || meeting.isPrivate))) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
     const content = await generateText(
       `${TASKS[draftType as DraftType]}\n\nMeeting details:\n${context.text}\n\n${writingRules(language)}\n\nUser's instructions / notes:\n${prompt}`,
     );
-    const draft = await prisma.aiDraft.create({ data: { meetingId: meeting.id, userId, draftType, content } });
-    res.status(201).json(draft);
+    // Stored encrypted; the user gets the readable text back
+    const draft = await prisma.aiDraft.create({ data: { meetingId: meeting.id, userId, draftType, content: seal(content) } });
+    res.status(201).json({ ...draft, content });
   } catch (error: any) {
     console.error('Error generating AI draft:', error);
     res.status(500).json({ error: 'Failed to generate AI draft: ' + (error.message || 'Unknown error') });

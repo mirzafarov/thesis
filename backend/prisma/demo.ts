@@ -12,6 +12,7 @@
  * These are local demo accounts only — never use this password anywhere real.
  */
 import { PrismaClient } from '@prisma/client';
+import { seal } from '../src/lib/secureText';
 import type { ActivityStatus, MeetingCategory, MeetingStatus, ProjectRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
@@ -137,7 +138,7 @@ async function create() {
       },
     });
     if (opts.minutes) {
-      await prisma.aiDraft.create({ data: { meetingId: m.id, userId: id.laura, draftType: 'SUMMARY', content: opts.minutes } });
+      await prisma.aiDraft.create({ data: { meetingId: m.id, userId: id.laura, draftType: 'SUMMARY', content: seal(opts.minutes) } });
     }
     return m.id;
   };

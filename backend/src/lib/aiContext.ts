@@ -3,6 +3,7 @@
 import { prisma } from './prisma';
 import { formatDateTime } from './emails';
 import { providerLabel } from './video';
+import { open } from './secureText';
 
 export const AI_LANGUAGES = { en: 'English', lt: 'Lithuanian' } as const;
 export type AiLanguage = keyof typeof AI_LANGUAGES;
@@ -24,6 +25,7 @@ export async function meetingContext(meetingId: string, viewerId: string) {
         participants: { include: { user: { select: { firstName: true, lastName: true } } } },
         activity: { select: { title: true } },
         polls: { orderBy: { startTime: 'asc' }, select: { startTime: true } },
+        notes: { orderBy: { createdAt: 'asc' }, select: { content: true, author: { select: { firstName: true, lastName: true } } } },
         actionItems: {
           orderBy: { createdAt: 'asc' },
           select: { title: true, dueDate: true, doneAt: true, assignee: { select: { firstName: true, lastName: true } } },
@@ -50,6 +52,10 @@ export async function meetingContext(meetingId: string, viewerId: string) {
       ? `Online meeting (${providerLabel(meeting.videoProvider)}): ${meeting.videoUrl}`
       : meeting.videoProvider ? 'Online meeting (the video link is sent when the time is confirmed)' : 'In person',
     meeting.activity ? `Related project activity: ${meeting.activity.title}` : '',
+    meeting.agenda ? `Agenda:\n${open(meeting.agenda)}` : '',
+    meeting.notes.length
+      ? `Notes written by participants:\n${meeting.notes.map(n => `- ${n.author ? name(n.author) : 'Someone'}: ${open(n.content)}`).join('\n')}`
+      : '',
     meeting.actionItems.length
       ? `To-dos agreed so far:\n${meeting.actionItems.map(a =>
           `- ${a.title}${a.assignee ? ` (responsible: ${name(a.assignee)})` : ''}${a.dueDate ? `, due ${a.dueDate.toISOString().slice(0, 10)}` : ''}${a.doneAt ? ', done' : ''}`,

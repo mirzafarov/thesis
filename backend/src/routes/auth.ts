@@ -12,6 +12,7 @@ import { emails } from '../lib/emails';
 import { createUserToken, consumeUserToken } from '../lib/tokens';
 import { audit, clientIp } from '../lib/audit';
 import { ID_CODE_ERROR, encryptIdCode, parseIdCode, readIdCode } from '../lib/idCode';
+import { open } from '../lib/secureText';
 import { startSession, isTwoFactorRequired, activeSessionFilter, revokeAllSessions } from '../lib/sessions';
 import {
   createPendingSecret, verifyPendingCode, verifyLoginCode,
@@ -534,6 +535,7 @@ router.get('/me/export', authenticate, async (req: AuthRequest, res) => {
         meetingParticipations: true,
         pollVotes: true,
         aiDrafts: true,
+        meetingNotes: true,
         // Never export the password hash, 2FA secret, recovery codes or (encrypted) calendar tokens.
         calendarAccounts: { select: { provider: true, email: true } },
         sessions: { select: { ipAddress: true, userAgent: true, createdAt: true, lastSeenAt: true, revokedAt: true } },
@@ -544,7 +546,13 @@ router.get('/me/export', authenticate, async (req: AuthRequest, res) => {
     await audit(req, { userId: req.user.userId, action: 'DATA_EXPORTED', details: 'User downloaded their personal data (GDPR).' });
     // The ID code is exported readable (it is the user's own data), not in its encrypted form
     const { idCodeEncrypted, ...rest } = user!;
-    res.json({ ...rest, idCode: readIdCode(idCodeEncrypted) });
+    // Encrypted content is exported readable: it is the user's own data
+    res.json({
+      ...rest,
+      idCode: readIdCode(idCodeEncrypted),
+      aiDrafts: rest.aiDrafts.map(d => ({ ...d, content: open(d.content) })),
+      meetingNotes: rest.meetingNotes.map(n => ({ ...n, content: open(n.content) })),
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to export data' });

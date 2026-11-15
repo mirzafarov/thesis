@@ -65,7 +65,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 router.post('/poll', authenticate, async (req: AuthRequest, res) => {
   try {
     const userId = req.user.userId;
-    const { projectId, activityId, title, description, durationMin, proposedSlots = [], participantIds = [], category = 'OTHER', video = 'auto', videoUrl } = req.body;
+    const { projectId, activityId, title, description, durationMin, proposedSlots = [], participantIds = [], category = 'OTHER', video = 'auto', videoUrl, isPrivate = false } = req.body;
 
     if (!(await isProjectMember(userId, projectId))) {
       return res.status(403).json({ error: 'Access denied' });
@@ -96,6 +96,7 @@ router.post('/poll', authenticate, async (req: AuthRequest, res) => {
         durationMin,
         category,
         ...videoData,
+        isPrivate: isPrivate === true,
         organizerId: userId,
         status: 'DRAFT',
         participants: { create: [...invited].map(id => ({ userId: id })) },
@@ -331,7 +332,7 @@ router.put('/:meetingId/reschedule', authenticate, async (req: AuthRequest, res)
     const membership = await prisma.projectMembership.findUnique({
       where: { userId_projectId: { userId, projectId: meeting.projectId } },
     });
-    if (meeting.organizerId !== userId && membership?.role !== 'MANAGER') {
+    if (meeting.organizerId !== userId && (membership?.role !== 'MANAGER' || meeting.isPrivate)) {
       return res.status(403).json({ error: 'Only the organizer or a project manager can reschedule this meeting' });
     }
     if (!['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'].includes(meeting.status)) {
@@ -364,7 +365,7 @@ router.put('/:meetingId/video', authenticate, async (req: AuthRequest, res) => {
     const membership = await prisma.projectMembership.findUnique({
       where: { userId_projectId: { userId, projectId: meeting.projectId } },
     });
-    if (meeting.organizerId !== userId && membership?.role !== 'MANAGER') {
+    if (meeting.organizerId !== userId && (membership?.role !== 'MANAGER' || meeting.isPrivate)) {
       return res.status(403).json({ error: 'Only the organizer or a project manager can change the video call' });
     }
     if (['COMPLETED', 'CANCELLED'].includes(meeting.status)) {

@@ -9,6 +9,7 @@ import { JoinButton, VideoChoice, VideoSettingsModal, providerName } from '../co
 import type { VideoMode } from '../components/meetings/VideoCall';
 import { ActionItemsModal } from '../components/meetings/ActionItems';
 import { AiReplyModal, CopyButton, LANGUAGE_OPTIONS } from '../components/meetings/AiReply';
+import { MeetingNotesModal } from '../components/meetings/MeetingNotes';
 import { browserTimeZone, formatInZone, otherZonesLine, zoneCity } from '../lib/time';
 
 const MAX_SLOTS = 5;
@@ -49,7 +50,7 @@ const TimeWithZones = ({ iso, zones, strong = false }: { iso: string; zones: (st
   );
 };
 
-const emptyForm = { projectId: '', activityId: '', title: '', description: '', durationMin: 30, category: 'OTHER', video: 'auto' as VideoMode, videoUrl: '' };
+const emptyForm = { projectId: '', activityId: '', title: '', description: '', durationMin: 30, category: 'OTHER', video: 'auto' as VideoMode, videoUrl: '', isPrivate: false };
 
 const Meetings = () => {
   const [meetings, setMeetings] = useState<any[]>([]);
@@ -75,6 +76,8 @@ const Meetings = () => {
   const [draftType, setDraftType] = useState('AGENDA');
   const [aiLanguage, setAiLanguage] = useState('en');
   const [replyMeeting, setReplyMeeting] = useState<any>(null);
+  const [notesMeeting, setNotesMeeting] = useState<any>(null);
+  const [agendaSaved, setAgendaSaved] = useState(false);
   const [generatedDraft, setGeneratedDraft] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -84,6 +87,7 @@ const Meetings = () => {
   // Schedule form
   const [formData, setFormData] = useState(emptyForm);
   const [slots, setSlots] = useState<string[]>([]); // ISO start times
+  const [uninvited, setUninvited] = useState<string[]>([]); // project members left out of this meeting
   const [manualSlot, setManualSlot] = useState('');
   const [formError, setFormError] = useState('');
 
@@ -109,6 +113,7 @@ const Meetings = () => {
   const openSchedule = (prefill: Partial<typeof emptyForm> = {}) => {
     setFormData({ ...emptyForm, ...prefill });
     setSlots([]);
+    setUninvited([]);
     setManualSlot('');
     setFormError('');
     setShowScheduleModal(true);
@@ -128,6 +133,9 @@ const Meetings = () => {
 
   const project = projects.find(p => p.id === formData.projectId);
   const members: any[] = project?.members || [];
+  // Everyone in the project is invited unless unticked; the organizer is always included by the server
+  const invited = members.filter(m => !uninvited.includes(m.userId) || m.userId === user?.id);
+  const invitedIds = invited.map((m: any) => m.userId);
   const memberZones = members.map(m => m.user?.timeZone);
 
   const toggleSlot = (iso: string) =>
@@ -150,10 +158,10 @@ const Meetings = () => {
         ...formData,
         videoUrl: formData.video === 'custom' ? formData.videoUrl : undefined,
         proposedSlots: slots,
-        participantIds: members.map((m: any) => m.userId),
+        participantIds: invitedIds,
       });
       setShowScheduleModal(false);
-      setNotice({ variant: 'success', text: `Poll sent to ${Math.max(members.length - 1, 0)} participant(s). The meeting is confirmed automatically when a majority votes "Yes" for a time.` });
+      setNotice({ variant: 'success', text: `Poll sent to ${Math.max(invited.length - 1, 0)} participant(s). The meeting is confirmed automatically when a majority votes "Yes" for a time.` });
       fetchData();
     } catch (err: any) {
       setFormError(err.response?.data?.error || 'Could not create the poll.');
@@ -201,6 +209,7 @@ const Meetings = () => {
     e.preventDefault();
     setIsGenerating(true);
     setGeneratedDraft('');
+    setAgendaSaved(false);
     try {
       const res = await axios.post('/api/ai/generate', { meetingId: selectedMeetingId, draftType, prompt: aiPrompt, language: aiLanguage });
       setGeneratedDraft(res.data.content);
@@ -336,7 +345,10 @@ const Meetings = () => {
               <Card key={meeting.id} className="mb-3 border-0 shadow-sm custom-hover-card">
                 <Card.Body className="d-flex flex-wrap gap-2 justify-content-between align-items-center">
                   <div>
-                    <Card.Title className="mb-1">{meeting.title}</Card.Title>
+                    <Card.Title className="mb-1">
+                      {meeting.title}
+                      {meeting.isPrivate && <Badge bg="dark" className="ms-2 align-middle" style={{ fontSize: '0.7rem' }}><i className="bi bi-lock-fill me-1" aria-hidden="true"></i>Private</Badge>}
+                    </Card.Title>
                     <Card.Subtitle className="mb-2 text-primary small"><i className="bi bi-folder2-open me-1" aria-hidden="true"></i>{meeting.project.name}</Card.Subtitle>
                     <div className="text-muted mb-0">
                       <i className="bi bi-clock me-1" aria-hidden="true"></i>
@@ -368,6 +380,11 @@ const Meetings = () => {
                         <Button variant="outline-secondary" size="sm" onClick={() => downloadIcs(meeting)}
                           title="Download an .ics file for Outlook, Apple Calendar, Google Calendar…">
                           <i className="bi bi-calendar-plus me-1" aria-hidden="true"></i>Add to calendar
+                        </Button>
+                      )}
+                      {meeting.status !== 'CANCELLED' && (
+                        <Button variant="outline-secondary" size="sm" onClick={() => setNotesMeeting(meeting)}>
+                          <i className="bi bi-journal-text me-1" aria-hidden="true"></i>Agenda & notes
                         </Button>
                       )}
                       {meeting.status !== 'CANCELLED' && (
@@ -469,7 +486,22 @@ const Meetings = () => {
             <div className="mt-4 p-4 rounded shadow-sm border">
               <div className="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
                 <h6 className="text-primary fw-bold mb-0">Generated {draftType.toLowerCase()}</h6>
-                <CopyButton text={generatedDraft} />
+                <div className="d-flex gap-2">
+                  {draftType === 'AGENDA' && meetings.find(m => m.id === selectedMeetingId)?.organizerId === user?.id && (
+                    <Button size="sm" variant={agendaSaved ? 'success' : 'outline-primary'} disabled={agendaSaved}
+                      onClick={async () => {
+                        try {
+                          await axios.put(`/api/meetings/${selectedMeetingId}/agenda`, { agenda: generatedDraft });
+                          setAgendaSaved(true);
+                        } catch (err: any) {
+                          setGeneratedDraft(generatedDraft + '\n\n> ' + (err.response?.data?.error || 'Could not save the agenda.'));
+                        }
+                      }}>
+                      <i className={`bi ${agendaSaved ? 'bi-check2' : 'bi-journal-check'} me-1`} aria-hidden="true"></i>{agendaSaved ? 'Saved as agenda' : 'Use as agenda'}
+                    </Button>
+                  )}
+                  <CopyButton text={generatedDraft} />
+                </div>
               </div>
               <p className="small" style={{ color: 'var(--text-secondary)' }}>The AI used this meeting's real details (time in your time zone, people, video link, to-dos). Always check the text before sending it.</p>
               <div className="markdown-body" style={{ fontSize: '0.95rem' }}>
@@ -575,6 +607,23 @@ const Meetings = () => {
               </Col>
             </Row>
 
+            {members.length > 1 && (
+              <fieldset className="mb-3">
+                <legend className="fw-semibold text-muted small text-uppercase mb-2" style={{ fontSize: '0.875rem' }}>Participants ({invited.length})</legend>
+                <div className="d-flex flex-wrap gap-3">
+                  {members.map((m: any) => (
+                    <Form.Check key={m.userId} type="checkbox" id={`inv-${m.userId}`}
+                      label={`${m.user?.firstName} ${m.user?.lastName}${m.userId === user?.id ? ' (you, organizer)' : ''}`}
+                      checked={m.userId === user?.id || !uninvited.includes(m.userId)} disabled={m.userId === user?.id}
+                      onChange={() => setUninvited(u => (u.includes(m.userId) ? u.filter(x => x !== m.userId) : [...u, m.userId]))} />
+                  ))}
+                </div>
+                <Form.Check type="switch" id="sched-private" className="mt-2"
+                  label="Private meeting: only the people ticked above can see it (not other project managers)"
+                  checked={formData.isPrivate} onChange={e => setFormData({ ...formData, isPrivate: e.target.checked })} />
+              </fieldset>
+            )}
+
             <div className="mb-3">
               <VideoChoice idPrefix="sched" mode={formData.video} url={formData.videoUrl}
                 onChange={(video, videoUrl) => setFormData({ ...formData, video, videoUrl })} />
@@ -585,7 +634,7 @@ const Meetings = () => {
             <SlotFinder
               projectId={formData.projectId}
               durationMin={formData.durationMin}
-              participantIds={members.map((m: any) => m.userId)}
+              participantIds={invitedIds}
               selected={slots}
               onToggle={toggleSlot}
               maxSelected={MAX_SLOTS}
@@ -616,6 +665,15 @@ const Meetings = () => {
           </Modal.Footer>
         </Form>
       </Modal>
+
+      <MeetingNotesModal meeting={notesMeeting} onHide={() => setNotesMeeting(null)}
+        onWriteMinutes={notesText => {
+          const m = notesMeeting;
+          setNotesMeeting(null);
+          openAIModal(m.id);
+          setDraftType('SUMMARY');
+          setAiPrompt(notesText);
+        }} />
 
       <AiReplyModal meeting={replyMeeting} onHide={() => setReplyMeeting(null)} />
 

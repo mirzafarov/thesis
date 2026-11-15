@@ -4,6 +4,7 @@ import { Container, Card, Row, Col, Button, ListGroup, Form, Modal, Alert, Butto
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import ProjectLog from '../components/ProjectLog';
+import ProjectGroups from '../components/ProjectGroups';
 import GanttChart from '../components/gantt/GanttChart';
 import type { GanttActivity, GanttItem, GanttPhase } from '../components/gantt/GanttChart';
 import { dayToISO, isoToInput, formatDayLong, toDay } from '../components/gantt/dates';
@@ -533,6 +534,9 @@ const ProjectDetails = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* Email groups: managers create them; members see the groups they are in */}
+      <ProjectGroups projectId={project.id} members={project.members} />
 
       {/* Project log: managers only */}
       {isManager && <ProjectLog projectId={project.id} members={project.members} />}
