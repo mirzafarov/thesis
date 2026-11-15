@@ -12,9 +12,18 @@ export interface TokenUser {
   mfaSetupRequired: boolean;
 }
 
-export interface AuthRequest extends Request<Record<string, string>> {
-  user?: any;
+// Tell Express's request type about the logged-in user. `authenticate` sets it before any route that reads it runs.
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user: TokenUser;
+    }
+  }
 }
+
+/** A request of a route behind `authenticate` (kept as a name so route signatures stay readable). */
+export type AuthRequest = Request<Record<string, string>>;
 
 // While a manager still has to set up two-factor login, only these API paths work.
 const ALLOWED_DURING_MFA_SETUP = ['/api/auth/2fa/', '/api/auth/me', '/api/auth/logout', '/api/auth/sessions'];

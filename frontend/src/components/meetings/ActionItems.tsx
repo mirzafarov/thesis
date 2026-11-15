@@ -4,6 +4,7 @@ import { useCallback, useContext, useEffect, useState } from 'react';
 import { Alert, Badge, Button, Form, ListGroup, Modal, Spinner } from 'react-bootstrap';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
+import { apiError } from '../../lib/apiError';
 
 export interface ActionItem {
   id: string;
@@ -57,8 +58,8 @@ export const ActionItemsModal = ({ meeting, onHide, onChanged }: Props) => {
       const res = await axios.get(`/api/meetings/${meeting.id}/action-items`);
       setItems(res.data.items);
       setRights({ canAdd: res.data.canAdd, canManageAll: res.data.canManageAll });
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not load the to-do list.');
+    } catch (err) {
+      setError(apiError(err, 'Could not load the to-do list.'));
     }
   }, [meeting]);
 
@@ -79,8 +80,8 @@ export const ActionItemsModal = ({ meeting, onHide, onChanged }: Props) => {
       await action();
       await load();
       onChanged();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'That did not work.');
+    } catch (err) {
+      setError(apiError(err, 'That did not work.'));
     } finally {
       setBusy(false);
     }

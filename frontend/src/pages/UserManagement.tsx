@@ -4,6 +4,7 @@ import { Alert, Badge, Button, ButtonGroup, Card, Container, Dropdown, Form, Mod
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { formatIp, tdStyle, thStyle, when } from './admin/adminUi';
+import { apiError } from '../lib/apiError';
 
 interface AdminUser {
   id: string;
@@ -57,8 +58,8 @@ const UserManagement = () => {
     try {
       const res = await axios.get('/api/admin/users', { params: { q: q || undefined, status: status || undefined } });
       setUsers(res.data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not load users.');
+    } catch (err) {
+      setError(apiError(err, 'Could not load users.'));
     }
   }, [q, status]);
 
@@ -82,8 +83,8 @@ const UserManagement = () => {
       setPending(null);
       setReason('');
       load();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'That did not work.');
+    } catch (err) {
+      setError(apiError(err, 'That did not work.'));
       setPending(null);
     } finally {
       setBusy(false);

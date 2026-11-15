@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Button, ButtonGroup, Form, Modal } from 'react-bootstrap';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
+import { apiError } from '../../lib/apiError';
 
 export const LANGUAGE_OPTIONS = [['en', 'English'], ['lt', 'Lietuvių (Lithuanian)']] as const;
 
@@ -38,8 +39,8 @@ export const AiReplyModal = ({ meeting, onHide }: { meeting: { id: string; title
     try {
       const res = await axios.post(`/api/meetings/${meeting.id}/email-draft`, { responseType: type, language, note });
       setDraft(res.data.draft);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not write the reply.');
+    } catch (err) {
+      setError(apiError(err, 'Could not write the reply.'));
     } finally {
       setBusy(false);
     }

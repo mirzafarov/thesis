@@ -5,6 +5,7 @@ import { Alert, Button, Modal } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
+import { apiError } from '../lib/apiError';
 
 /** Fired after consent was saved, so the first-login tour can start. */
 export const POLICY_ACCEPTED_EVENT = 'safezone:policy-accepted';
@@ -32,8 +33,8 @@ export default function PolicyConsent() {
       await axios.post('/api/auth/me/consent', { version });
       setVersion(null);
       window.dispatchEvent(new Event(POLICY_ACCEPTED_EVENT));
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not save your consent.');
+    } catch (err) {
+      setError(apiError(err, 'Could not save your consent.'));
     } finally {
       setBusy(false);
     }

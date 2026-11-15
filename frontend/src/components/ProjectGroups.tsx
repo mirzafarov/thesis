@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, Form, ListGroup, Modal, Spinner } from 'react-bootstrap';
 import axios from 'axios';
+import { apiError } from '../lib/apiError';
 
 interface Member { userId: string; role: string; user: { firstName: string; lastName: string } }
 interface Group {
@@ -24,8 +25,8 @@ const GroupForm = ({ projectId, members, group, onDone, onCancel }: {
       if (group) await axios.put(`/api/groups/${group.id}`, { name, memberIds: chosen });
       else await axios.post(`/api/projects/${projectId}/groups`, { name, memberIds: chosen });
       onDone();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not save the group.');
+    } catch (err) {
+      setError(apiError(err, 'Could not save the group.'));
     }
   };
   return (
@@ -65,7 +66,7 @@ const GroupMessagesModal = ({ group, onHide }: { group: Group | null; onHide: ()
   const load = useCallback(async () => {
     if (!group) return;
     try { setData((await axios.get(`/api/groups/${group.id}/messages`)).data); }
-    catch (err: any) { setError(err.response?.data?.error || 'Could not load the messages.'); }
+    catch (err) { setError(apiError(err, 'Could not load the messages.')); }
   }, [group]);
   useEffect(() => { setData(null); setError(''); setNotice(''); setSubject(''); setBody(''); load(); }, [load]);
 
@@ -77,8 +78,8 @@ const GroupMessagesModal = ({ group, onHide }: { group: Group | null; onHide: ()
       setNotice(`Sent to ${res.data.recipients} member${res.data.recipients === 1 ? '' : 's'} by email and saved in the history.`);
       setSubject(''); setBody('');
       load();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not send the message.');
+    } catch (err) {
+      setError(apiError(err, 'Could not send the message.'));
     } finally {
       setBusy(false);
     }
@@ -138,14 +139,14 @@ export default function ProjectGroups({ projectId, members }: { projectId: strin
 
   const load = useCallback(async () => {
     try { setData((await axios.get(`/api/projects/${projectId}/groups`)).data); }
-    catch (err: any) { setError(err.response?.data?.error || 'Could not load the groups.'); }
+    catch (err) { setError(apiError(err, 'Could not load the groups.')); }
   }, [projectId]);
   useEffect(() => { load(); }, [load]);
 
   const remove = async (g: Group) => {
     if (!window.confirm(`Delete the group "${g.name}" and its message history?`)) return;
     try { await axios.delete(`/api/groups/${g.id}`); load(); }
-    catch (err: any) { setError(err.response?.data?.error || 'Could not delete the group.'); }
+    catch (err) { setError(apiError(err, 'Could not delete the group.')); }
   };
 
   // Members without groups and not managers see nothing here

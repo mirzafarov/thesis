@@ -3,6 +3,7 @@ import { google } from 'googleapis';
 import { prisma } from './prisma';
 import { getGoogleClientForUser } from './google';
 import { localParts, zoneOf, formatInZone } from './timezones';
+import { errorMessage } from './errors';
 
 export interface Participant {
   id: string;
@@ -37,8 +38,8 @@ export async function busyIntervals(userIds: string[], from: Date, to: Date, exc
       for (const b of fb.data.calendars?.['primary']?.busy || []) {
         if (b.start && b.end) busy.get(userId)!.push({ start: new Date(b.start), end: new Date(b.end) });
       }
-    } catch (err: any) {
-      console.error(`Free/busy failed for user ${userId}:`, err.message);
+    } catch (err) {
+      console.error(`Free/busy failed for user ${userId}:`, errorMessage(err));
     }
   }));
 

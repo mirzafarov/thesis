@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 import { ErrorBoundary } from 'react-error-boundary';
+import type { FallbackProps } from 'react-error-boundary';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import './index.css';
@@ -27,12 +28,12 @@ axios.interceptors.response.use(undefined, error => {
   return Promise.reject(error);
 });
 
-function fallbackRender({ error, resetErrorBoundary }: any) {
+function fallbackRender({ error, resetErrorBoundary }: FallbackProps) {
   return (
     <div role="alert" style={{ padding: '20px', color: 'red' }}>
       <p>Something went wrong:</p>
       <button className="btn btn-sm btn-outline-danger mb-2" onClick={resetErrorBoundary}>Try again</button>
-      <pre>{error.message}</pre>
+      <pre>{error instanceof Error ? error.message : String(error)}</pre>
     </div>
   );
 }

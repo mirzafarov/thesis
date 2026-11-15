@@ -1,4 +1,5 @@
 // PDF and Excel export of a report. Libraries are loaded only when exporting (keeps the app fast).
+import type { CellDef } from 'jspdf-autotable';
 
 /** Selected phases for the PDF header line (shortened so the line fits the page). */
 const phaseLabel = (r: ReportData) => {
@@ -6,6 +7,9 @@ const phaseLabel = (r: ReportData) => {
   const text = names.join(', ');
   return text.length > 60 ? `${text.slice(0, 57)}…` : text;
 };
+
+/** jspdf-autotable stores where the last table ended on the document */
+const lastTableY = (doc: object) => (doc as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
 
 export interface ReportData {
   period: { from: string; to: string; timeZone: string };
@@ -111,7 +115,7 @@ export async function exportPdf(r: ReportData, scopeLabel: string) {
   });
 
   const table = (title: string, head: string[], body: (string | number)[][], startY?: number) => {
-    const y = startY ?? ((doc as any).lastAutoTable?.finalY ?? 75) + 12;
+    const y = startY ?? (lastTableY(doc) ?? 75) + 12;
     doc.setFontSize(12.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...navy);
@@ -119,7 +123,7 @@ export async function exportPdf(r: ReportData, scopeLabel: string) {
     autoTable(doc, {
       startY: y + 3,
       head: [head],
-      body: body.length ? body : [[{ content: 'No data for this selection', colSpan: head.length, styles: { halign: 'center', textColor: 120 } } as any]],
+      body: body.length ? body : [[{ content: 'No data for this selection', colSpan: head.length, styles: { halign: 'center', textColor: 120 } } as CellDef]],
       margin: { left: 12, right: 12, top: 28 },
       styles: { fontSize: 8.5, cellPadding: 2 },
       headStyles: { fillColor: blue },

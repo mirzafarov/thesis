@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
@@ -30,7 +31,9 @@ function saveToOutbox(email: Email) {
   fs.mkdirSync(OUTBOX_DIR, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const slug = email.subject.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50);
-  const file = path.join(OUTBOX_DIR, `${stamp}-${slug}.html`);
+  // A short random part keeps names unique: several emails with the same subject can be written in the same millisecond
+  // (e.g. a group message to every member), and must not overwrite each other.
+  const file = path.join(OUTBOX_DIR, `${stamp}-${crypto.randomBytes(3).toString('hex')}-${slug}.html`);
   // Subjects contain user-typed titles: escape them so they cannot break out of the comment when the file is opened.
   const safe = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/--/g, '&#45;&#45;');
   const header = `<!-- To: ${safe(email.to)} | Subject: ${safe(email.subject)} -->\n`;

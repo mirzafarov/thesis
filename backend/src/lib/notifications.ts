@@ -4,6 +4,7 @@ import { emails } from './emails';
 import { providerLabel } from './video';
 import { icsAttachment } from './ics';
 import type { Email } from './mailer';
+import { isUniqueViolation } from './errors';
 
 const SCHEDULED = ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'] as const;
 const HOUR = 60 * 60 * 1000;
@@ -21,8 +22,8 @@ async function claim(userId: string, type: string, refId: string) {
   try {
     await prisma.notificationLog.create({ data: { userId, type, refId } });
     return true;
-  } catch (err: any) {
-    if (err.code === 'P2002') return false; // already sent
+  } catch (err) {
+    if (isUniqueViolation(err)) return false; // already sent
     throw err;
   }
 }

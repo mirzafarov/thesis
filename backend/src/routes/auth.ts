@@ -21,6 +21,7 @@ import {
 import { authenticate } from '../middleware/auth';
 import { isValidTimeZone } from '../lib/timezones';
 import type { AuthRequest } from '../middleware/auth';
+import type { Request, Response } from 'express';
 
 const router = express.Router();
 
@@ -141,7 +142,7 @@ router.post('/register', [
   body('firstName').trim().matches(NAME_PATTERN).withMessage('First name may contain only letters, spaces, apostrophes and hyphens'),
   body('lastName').trim().matches(NAME_PATTERN).withMessage('Last name may contain only letters, spaces, apostrophes and hyphens'),
   body('gdprConsent').equals('true').withMessage('You must agree to the Privacy Policy and GDPR rules to register.'),
-], async (req: any, res: any) => {
+], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -233,7 +234,7 @@ router.post('/forgot-password', emailLimiter, async (req, res) => {
   }
 });
 
-router.post('/reset-password', async (req: any, res: any) => {
+router.post('/reset-password', async (req: Request, res: Response) => {
   try {
     const policyError = await checkPasswordPolicy(req.body.password);
     if (policyError) return res.status(400).json({ error: policyError });
@@ -269,7 +270,7 @@ router.post('/reset-password', async (req: any, res: any) => {
 
 // ---------- Login (step 1: password, step 2: two-factor code) ----------
 
-router.post('/login', loginLimiter, async (req: any, res: any) => {
+router.post('/login', loginLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
@@ -348,7 +349,7 @@ router.post('/login', loginLimiter, async (req: any, res: any) => {
   }
 });
 
-router.post('/login/2fa', codeLimiter, async (req: any, res: any) => {
+router.post('/login/2fa', codeLimiter, async (req: Request, res: Response) => {
   try {
     let userId: string;
     try {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Form, Row, Spinner, Table } from 'react-bootstrap';
 import axios from 'axios';
 import { ActionBadge, tdStyle, thStyle, when } from '../pages/admin/adminUi';
+import { apiError } from '../lib/apiError';
 
 interface LogRow {
   id: string;
@@ -31,8 +32,8 @@ export default function ProjectLog({ projectId, members }: { projectId: string; 
       const params = Object.fromEntries(Object.entries(applied).filter(([, v]) => v));
       const res = await axios.get(`/api/projects/${projectId}/logs`, { params: { ...params, page } });
       setData(res.data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not load the project log.');
+    } catch (err) {
+      setError(apiError(err, 'Could not load the project log.'));
     } finally {
       setLoading(false);
     }

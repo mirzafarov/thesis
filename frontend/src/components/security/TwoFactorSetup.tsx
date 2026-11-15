@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Form, Spinner } from 'react-bootstrap';
 import axios from 'axios';
+import { apiError } from '../../lib/apiError';
 
 /** Recovery codes shown once, with copy and download buttons. */
 export const RecoveryCodes = ({ codes, onDone }: { codes: string[]; onDone: () => void }) => {
@@ -53,7 +54,7 @@ const TwoFactorSetup = ({ onEnabled }: { onEnabled: () => void }) => {
     started.current = true;
     axios.post('/api/auth/2fa/setup')
       .then(res => setQr(res.data))
-      .catch(err => setError(err.response?.data?.error || 'Could not start the setup.'));
+      .catch(err => setError(apiError(err, 'Could not start the setup.')));
   }, []);
 
   const confirm = async (e: React.FormEvent) => {
@@ -63,8 +64,8 @@ const TwoFactorSetup = ({ onEnabled }: { onEnabled: () => void }) => {
     try {
       const res = await axios.post('/api/auth/2fa/enable', { code });
       setRecoveryCodes(res.data.recoveryCodes);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not enable two-factor login.');
+    } catch (err) {
+      setError(apiError(err, 'Could not enable two-factor login.'));
     } finally {
       setBusy(false);
     }

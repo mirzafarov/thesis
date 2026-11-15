@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Container, Card, Row, Col, Button, ListGroup, Form, Modal, Alert, ButtonGroup } from 'react-bootstrap';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
+import { apiError } from '../lib/apiError';
 import ProjectLog from '../components/ProjectLog';
 import ProjectGroups from '../components/ProjectGroups';
 import GanttChart from '../components/gantt/GanttChart';
@@ -32,6 +33,9 @@ interface Project {
   activities: Activity[];
 }
 
+/** A person found by email when inviting to the project */
+interface UserSearchResult { id: string; email: string; firstName: string; lastName: string }
+
 interface MeetingSuggestion {
   meetingId: string;
   title: string;
@@ -53,7 +57,6 @@ const emptyActivity = {
 };
 const emptyPhase = { id: '', name: '', startDate: '', endDate: '', isMilestone: false };
 
-const apiError = (err: any, fallback: string) => err?.response?.data?.error || fallback;
 
 const ProjectDetails = () => {
   const { id } = useParams();
@@ -81,7 +84,7 @@ const ProjectDetails = () => {
   const [editProjectData, setEditProjectData] = useState({ name: '', description: '', startDate: '', endDate: '' });
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [inviteRole, setInviteRole] = useState<Member['role']>('EMPLOYEE');
   const [inviteError, setInviteError] = useState('');
 
@@ -135,8 +138,8 @@ const ProjectDetails = () => {
     } : { ...emptyActivity, ...defaults });
   };
 
-  const showSuggestions = (activityTitle: string, data: any) => {
-    if (data?.meetingSuggestions?.length > 0) {
+  const showSuggestions = (activityTitle: string, data: { meetingSuggestions?: MeetingSuggestion[]; shiftDays?: number }) => {
+    if (data.meetingSuggestions && data.meetingSuggestions.length > 0 && data.shiftDays !== undefined) {
       setSuggestions({ activity: activityTitle, days: data.shiftDays, items: data.meetingSuggestions });
     }
   };
@@ -287,7 +290,7 @@ const ProjectDetails = () => {
       try {
         const res = await axios.get('/api/users/search', { params: { email: q } });
         const existingIds = project.members.map(m => m.userId);
-        setSearchResults(res.data.filter((u: any) => !existingIds.includes(u.id)));
+        setSearchResults((res.data as UserSearchResult[]).filter(u => !existingIds.includes(u.id)));
       } catch (err) {
         console.error(err);
       }
@@ -339,7 +342,7 @@ const ProjectDetails = () => {
       doc.setTextColor(0);
 
       const section = (title: string, y: number) => { doc.setFontSize(16); doc.text(title, 14, y); };
-      const lastY = () => (doc as any).lastAutoTable?.finalY || 40;
+      const lastY = () => (doc as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || 40;
 
       section('Team Members', 45);
       autoTable(doc, {

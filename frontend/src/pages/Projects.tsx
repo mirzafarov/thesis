@@ -75,7 +75,7 @@ const Projects = () => {
             <Col><p>No projects found. Create one to get started!</p></Col>
           ) : (
             projects.map(project => {
-              const myMembership = project.members?.find((m: any) => m.userId === user?.id);
+              const myMembership = project.members?.find(m => m.userId === user?.id);
               const isManager = myMembership?.role === 'MANAGER' || user?.role === 'ADMIN';
 
               return (

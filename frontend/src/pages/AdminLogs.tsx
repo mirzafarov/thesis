@@ -4,6 +4,7 @@ import { Alert, Button, Card, Col, Container, Form, Row, Spinner, Table } from '
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { ActionBadge, formatIp, tdStyle, thStyle, when } from './admin/adminUi';
+import { apiError } from '../lib/apiError';
 
 interface LogRow {
   id: string;
@@ -38,8 +39,8 @@ const AdminLogs = () => {
     try {
       const res = await axios.get('/api/admin/logs', { params: { ...query(), page, pageSize: 50 } });
       setData(res.data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not load the logs.');
+    } catch (err) {
+      setError(apiError(err, 'Could not load the logs.'));
     } finally {
       setLoading(false);
     }

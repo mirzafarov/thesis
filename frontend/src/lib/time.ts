@@ -39,7 +39,9 @@ export function otherZonesLine(iso: string, zones: (string | null | undefined)[]
 
 export const allTimeZones = (): string[] => {
   try {
-    return (Intl as any).supportedValuesOf('timeZone') as string[];
+    // Intl.supportedValuesOf is newer than this project's TypeScript library settings, so it is described here
+    const intl = Intl as typeof Intl & { supportedValuesOf: (key: 'timeZone') => string[] };
+    return intl.supportedValuesOf('timeZone');
   } catch {
     return ['UTC', 'Europe/Vilnius', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Los_Angeles', 'Asia/Baku', 'Asia/Tokyo'];
   }

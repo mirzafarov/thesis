@@ -97,8 +97,10 @@ try {
   check('member sends a message to the group', r.status === 201 && r.data.recipients === 2);
   check('observer cannot send', (await call('POST', `/api/groups/${group.id}/messages`, tok.O, { subject: 's', body: 'b' })).status === 403);
   check('outsider cannot read the history', (await call('GET', `/api/groups/${group.id}/messages`, tok.X)).status === 403);
-  await sleep(1200);
-  check('every other member gets the email', mailsTo(people.M.email, '[Steering committee] Agenda for Friday').length === 1 && mailsTo(people.O.email, '[Steering committee]').length === 1);
+  // Group emails are sent in the background: wait until they have arrived (up to 10 s on a busy machine)
+  const arrived = () => mailsTo(people.M.email, '[Steering committee] Agenda for Friday').length === 1 && mailsTo(people.O.email, '[Steering committee]').length === 1;
+  for (let i = 0; i < 40 && !arrived(); i++) await sleep(250);
+  check('every other member gets the email', arrived());
   check('the sender does not get a copy by email', mailsTo(people.E.email, '[Steering committee]').length === 0);
   r = await call('GET', `/api/groups/${group.id}/messages`, tok.O);
   check('history shows the message (observer can read)', r.data.messages.length === 1 && r.data.messages[0].body.includes(tag) && r.data.canSend === false);

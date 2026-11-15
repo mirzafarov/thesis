@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Badge, Button, ButtonGroup, Col, Form, ListGroup, Row, Spinner } from 'react-bootstrap';
 import axios from 'axios';
 import { browserTimeZone, formatInZone, zoneCity } from '../../lib/time';
+import { apiError } from '../../lib/apiError';
 
 interface SuggestedSlot {
   start: string;
@@ -58,8 +59,8 @@ const SlotFinder = ({ projectId, durationMin, participantIds, selected, onToggle
         count: 5,
       });
       setResult(res.data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not search for free times.');
+    } catch (err) {
+      setError(apiError(err, 'Could not search for free times.'));
       setResult(null);
     } finally {
       setBusy(false);

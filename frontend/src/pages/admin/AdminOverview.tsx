@@ -4,6 +4,7 @@ import { Alert, Card, Col, Container, Row, Spinner, Table } from 'react-bootstra
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { ActionBadge, StatCard, formatIp, tdStyle, thStyle, when } from './adminUi';
+import { apiError } from '../../lib/apiError';
 
 interface Overview {
   users: { total: number; admins: number; verified: number; with2fa: number; blocked: number; locked: number; missing2fa: number };
@@ -21,7 +22,7 @@ export default function AdminOverview() {
   const [api, setApi] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
-    axios.get('/api/admin/overview').then(r => setData(r.data)).catch(e => setError(e.response?.data?.error || 'Could not load the overview.'));
+    axios.get('/api/admin/overview').then(r => setData(r.data)).catch(e => setError(apiError(e, 'Could not load the overview.')));
     axios.get('/api/health')
       .then(r => setApi({ ok: true, message: r.data.message }))
       .catch(() => setApi({ ok: false, message: 'Could not reach the backend API' }));

@@ -5,6 +5,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext, takeLogoutReason } from '../context/AuthContext';
 import { browserTimeZone } from '../lib/time';
+import { apiError, apiErrorCode } from '../lib/apiError';
+import type { LoginResponse } from '../types/api';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -19,12 +21,12 @@ const Login = () => {
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  const finish = (data: any) => {
+  const finish = (data: LoginResponse & { recoveryCodesLeft?: number | null }) => {
     login(data.token, data.user);
     if (data.recoveryCodesLeft !== null && data.recoveryCodesLeft !== undefined && data.recoveryCodesLeft <= 3) {
       alert(`You have ${data.recoveryCodesLeft} recovery codes left. Create new ones in Settings.`);
     }
-    navigate(data.user.mfaSetupRequired ? '/setup-2fa' : '/dashboard');
+    navigate((data.user as { mfaSetupRequired?: boolean }).mfaSetupRequired ? '/setup-2fa' : '/dashboard');
   };
 
   // Step 1: email and password
@@ -43,9 +45,9 @@ const Login = () => {
       } else {
         finish(data);
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Login failed. Please try again.');
-      setNeedsVerification(err.response?.data?.code === 'EMAIL_NOT_VERIFIED');
+    } catch (err) {
+      setError(apiError(err, 'Login failed. Please try again.'));
+      setNeedsVerification(apiErrorCode(err) === 'EMAIL_NOT_VERIFIED');
     } finally {
       setBusy(false);
     }
@@ -59,9 +61,9 @@ const Login = () => {
     try {
       const { data } = await axios.post('/api/auth/login/2fa', { mfaToken, code });
       finish(data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Login failed. Please try again.');
-      if (err.response?.data?.code === 'MFA_EXPIRED') {
+    } catch (err) {
+      setError(apiError(err, 'Login failed. Please try again.'));
+      if (apiErrorCode(err) === 'MFA_EXPIRED') {
         setMfaToken('');
         setPassword('');
       }
@@ -76,8 +78,8 @@ const Login = () => {
       setError('');
       setNeedsVerification(false);
       setInfo(res.data.message);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not send the email. Please try again later.');
+    } catch (err) {
+      setError(apiError(err, 'Could not send the email. Please try again later.'));
     }
   };
 

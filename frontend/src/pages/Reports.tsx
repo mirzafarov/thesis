@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Card, Col, Container, Form, Row, Spinner, Table }
 import axios from 'axios';
 import { CATEGORY_LABEL, exportPdf, exportXlsx, monthLabel } from '../lib/reportExport';
 import type { ReportData } from '../lib/reportExport';
+import { apiError } from '../lib/apiError';
 
 interface ProjectOption { id: string; name: string; startDate: string | null; endDate: string | null }
 interface Person { id: string; firstName: string; lastName: string }
@@ -49,8 +50,8 @@ const Reports = () => {
         params: { from, to, category, projectIds: selectedProjects.join(','), userIds: people.join(','), phaseIds: phases.join(',') },
       });
       setReport(res.data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not build the report.');
+    } catch (err) {
+      setError(apiError(err, 'Could not build the report.'));
     } finally {
       setLoading(false);
     }

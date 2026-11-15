@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Form, Modal } from 'react-bootstrap';
 import axios from 'axios';
+import type { Meeting } from '../../types/api';
+import { apiError } from '../../lib/apiError';
 
 export type VideoMode = 'auto' | 'jitsi' | 'custom' | 'none';
 
@@ -33,10 +35,12 @@ export const VideoChoice = ({ mode, url, onChange, allowAuto = true, idPrefix }:
 );
 
 /** From 15 minutes before the start until the end the button says "Join now" and stands out. */
-const isLive = (m: any, now: number) =>
+type VideoMeeting = Pick<Meeting, 'id' | 'status' | 'startDate' | 'endDate' | 'videoUrl' | 'videoProvider'>;
+
+const isLive = (m: VideoMeeting, now: number) =>
   m.startDate && now >= new Date(m.startDate).getTime() - 15 * 60000 && now <= new Date(m.endDate ?? m.startDate).getTime();
 
-export const JoinButton = ({ meeting }: { meeting: any }) => {
+export const JoinButton = ({ meeting }: { meeting: VideoMeeting }) => {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 30000);
@@ -53,7 +57,7 @@ export const JoinButton = ({ meeting }: { meeting: any }) => {
 };
 
 /** Organizer / project manager: switch between Jitsi, a custom link and in person. */
-export const VideoSettingsModal = ({ meeting, onHide, onSaved }: { meeting: any | null; onHide: () => void; onSaved: () => void }) => {
+export const VideoSettingsModal = ({ meeting, onHide, onSaved }: { meeting: VideoMeeting | null; onHide: () => void; onSaved: () => void }) => {
   const [mode, setMode] = useState<VideoMode>('jitsi');
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
@@ -63,18 +67,19 @@ export const VideoSettingsModal = ({ meeting, onHide, onSaved }: { meeting: any 
     if (!meeting) return;
     const p = meeting.videoProvider;
     setMode(!p ? 'none' : p === 'custom' ? 'custom' : p === 'auto' ? 'auto' : 'jitsi');
-    setUrl(p === 'custom' ? meeting.videoUrl : '');
+    setUrl(p === 'custom' ? meeting.videoUrl ?? '' : '');
     setError('');
   }, [meeting]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!meeting) return;
     setBusy(true);
     try {
       await axios.put(`/api/meetings/${meeting.id}/video`, { video: mode, videoUrl: mode === 'custom' ? url : undefined });
       onSaved();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not change the video call.');
+    } catch (err) {
+      setError(apiError(err, 'Could not change the video call.'));
     } finally {
       setBusy(false);
     }

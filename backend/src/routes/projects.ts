@@ -4,6 +4,7 @@ import { authenticate, getMembership, isProjectManager } from '../middleware/aut
 import type { AuthRequest } from '../middleware/auth';
 import { audit } from '../lib/audit';
 import { logFilter } from './admin';
+import { isUniqueViolation } from '../lib/errors';
 
 const router = express.Router();
 
@@ -500,8 +501,8 @@ router.post('/:id/members', authenticate, async (req: AuthRequest, res) => {
     });
     await audit(req, { userId: req.user.userId, projectId, action: 'MEMBER_ADDED', details: `Added ${newMember.user.email} as ${role}.` });
     res.status(201).json(newMember);
-  } catch (error: any) {
-    if (error.code === 'P2002') {
+  } catch (error) {
+    if (isUniqueViolation(error)) {
       return res.status(400).json({ error: 'User is already a member of this project' });
     }
     handleError(res, error, 'Failed to add member');

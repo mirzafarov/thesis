@@ -5,6 +5,7 @@ import { Alert, Badge, Button, Form, ListGroup, Modal, Spinner } from 'react-boo
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { AuthContext } from '../../context/AuthContext';
+import { apiError } from '../../lib/apiError';
 
 interface Person { id: string; firstName: string; lastName: string }
 interface NotesData {
@@ -41,8 +42,8 @@ export const MeetingNotesModal = ({ meeting, onHide, onWriteMinutes }: Props) =>
     if (!meeting) return;
     try {
       setData((await axios.get(`/api/meetings/${meeting.id}/notes`)).data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not load the agenda and notes.');
+    } catch (err) {
+      setError(apiError(err, 'Could not load the agenda and notes.'));
     }
   }, [meeting]);
 
@@ -57,8 +58,8 @@ export const MeetingNotesModal = ({ meeting, onHide, onWriteMinutes }: Props) =>
     try {
       await action();
       await load();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'That did not work.');
+    } catch (err) {
+      setError(apiError(err, 'That did not work.'));
     } finally {
       setBusy(false);
     }

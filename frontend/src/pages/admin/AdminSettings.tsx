@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Container, Form, Row, Spinner } from 'react-bootstrap';
 import axios from 'axios';
+import { apiError } from '../../lib/apiError';
 
 interface Settings {
   require2faForManagers: boolean;
@@ -33,7 +34,7 @@ export default function AdminSettings() {
       setSaved(r.data.settings);
       setDefaults(r.data.defaults);
       setLimits(r.data.limits);
-    }).catch(e => setMessage({ ok: false, text: e.response?.data?.error || 'Could not load settings.' }));
+    }).catch(e => setMessage({ ok: false, text: apiError(e, 'Could not load settings.') }));
   }, []);
 
   if (!form || !limits) {
@@ -53,8 +54,8 @@ export default function AdminSettings() {
       setForm(r.data.settings);
       setSaved(r.data.settings);
       setMessage({ ok: true, text: r.data.changed.length ? `Saved: ${r.data.changed.length} setting(s) changed. They apply immediately.` : 'Nothing changed.' });
-    } catch (err: any) {
-      setMessage({ ok: false, text: err.response?.data?.error || 'Could not save.' });
+    } catch (err) {
+      setMessage({ ok: false, text: apiError(err, 'Could not save.') });
     } finally {
       setSaving(false);
     }

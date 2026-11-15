@@ -5,6 +5,7 @@ import { open } from '../lib/secureText';
 import { dayRange, localParts, zoneOf } from '../lib/timezones';
 import { authenticate } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
+import type { MeetingCategory } from '@prisma/client';
 
 const router = express.Router();
 
@@ -61,7 +62,7 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
         projectId: { in: projectIds },
         status: { in: [...HELD] },
         startDate: { gte: start, lt: end },
-        ...(category && category !== 'ALL' ? { category: category as any } : {}),
+        ...(category && category !== 'ALL' ? { category: category as MeetingCategory } : {}),
         ...(phaseFilter.length ? { activity: { phaseId: { in: phaseFilter } } } : {}),
       },
       include: {

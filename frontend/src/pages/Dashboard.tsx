@@ -8,6 +8,7 @@ import { AuthContext } from '../context/AuthContext';
 import { JoinButton, providerName } from '../components/meetings/VideoCall';
 import { browserTimeZone, formatInZone } from '../lib/time';
 import { DueLabel } from '../components/meetings/ActionItems';
+import type { Meeting, MyTodo, PendingPoll } from '../types/api';
 import './dashboard.css';
 
 const SCHEDULED = ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'];
@@ -37,10 +38,10 @@ const StatCard = ({ icon, label, value, to, linkText, note }: { icon: string; la
 const Dashboard = () => {
   const [serverReachable, setServerReachable] = useState(true);
   const [projectsCount, setProjectsCount] = useState(0);
-  const [upcoming, setUpcoming] = useState<any[]>([]);
-  const [pendingPolls, setPendingPolls] = useState<any[]>([]);
+  const [upcoming, setUpcoming] = useState<Meeting[]>([]);
+  const [pendingPolls, setPendingPolls] = useState<PendingPoll[]>([]);
   const [calendarStatus, setCalendarStatus] = useState<{ connected: boolean; email?: string }>({ connected: false });
-  const [myTodos, setMyTodos] = useState<any[]>([]);
+  const [myTodos, setMyTodos] = useState<MyTodo[]>([]);
   const [loaded, setLoaded] = useState(false);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -62,9 +63,9 @@ const Dashboard = () => {
       setMyTodos(todosRes.data);
       setProjectsCount(projectsRes.data.length);
       setUpcoming(
-        meetingsRes.data
-          .filter((m: any) => SCHEDULED.includes(m.status) && new Date(m.endDate ?? m.startDate) >= new Date())
-          .sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
+        (meetingsRes.data as Meeting[])
+          .filter(m => SCHEDULED.includes(m.status) && !!m.startDate && new Date(m.endDate ?? m.startDate) >= new Date())
+          .sort((a, b) => new Date(a.startDate!).getTime() - new Date(b.startDate!).getTime()),
       );
       setPendingPolls(pollsRes.data);
       setCalendarStatus(calRes.data);
@@ -190,7 +191,7 @@ const Dashboard = () => {
                   <div className="db-row-main">
                     <div className="db-row-title">{m.title}</div>
                     <div className="db-row-sub">
-                      <i className="bi bi-clock" aria-hidden="true"></i>{formatInZone(m.startDate, zone)} · {m.durationMin} min · {providerName(m.videoProvider)}
+                      <i className="bi bi-clock" aria-hidden="true"></i>{m.startDate ? formatInZone(m.startDate, zone) : 'Time not decided'} · {m.durationMin} min · {providerName(m.videoProvider)}
                     </div>
                   </div>
                   <div className="db-row-action"><JoinButton meeting={m} /></div>

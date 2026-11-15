@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GEMINI_MODEL } from './config';
+import { errorMessage } from './errors';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
@@ -13,8 +14,8 @@ export async function generateText(prompt: string): Promise<string> {
     try {
       const result = await model.generateContent(prompt);
       return result.response.text();
-    } catch (err: any) {
-      if (attempt < 3 && err?.message?.includes('503')) {
+    } catch (err) {
+      if (attempt < 3 && errorMessage(err).includes('503')) {
         console.warn(`Gemini 503 (high demand). Retrying... (${3 - attempt} attempts left)`);
         await new Promise(resolve => setTimeout(resolve, 2000));
         continue;

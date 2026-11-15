@@ -5,6 +5,7 @@ import { isAiLanguage, meetingContext, writingRules } from '../lib/aiContext';
 import { seal } from '../lib/secureText';
 import { authenticate, getMembership } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
+import { errorMessage } from '../lib/errors';
 
 const router = express.Router();
 
@@ -53,9 +54,9 @@ router.post('/generate', authenticate, async (req: AuthRequest, res) => {
     // Stored encrypted; the user gets the readable text back
     const draft = await prisma.aiDraft.create({ data: { meetingId: meeting.id, userId, draftType, content: seal(content) } });
     res.status(201).json({ ...draft, content });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error generating AI draft:', error);
-    res.status(500).json({ error: 'Failed to generate AI draft: ' + (error.message || 'Unknown error') });
+    res.status(500).json({ error: 'Failed to generate AI draft: ' + errorMessage(error) });
   }
 });
 

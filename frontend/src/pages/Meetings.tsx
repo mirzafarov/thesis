@@ -8,16 +8,18 @@ import SlotFinder from '../components/meetings/SlotFinder';
 import { JoinButton, VideoChoice, VideoSettingsModal, providerName } from '../components/meetings/VideoCall';
 import type { VideoMode } from '../components/meetings/VideoCall';
 import { ActionItemsModal } from '../components/meetings/ActionItems';
+import type { Meeting, PendingPoll, ProjectMember, ProjectSummary } from '../types/api';
 import { AiReplyModal, CopyButton, LANGUAGE_OPTIONS } from '../components/meetings/AiReply';
 import { MeetingNotesModal } from '../components/meetings/MeetingNotes';
 import { browserTimeZone, formatInZone, otherZonesLine, zoneCity } from '../lib/time';
+import { apiError } from '../lib/apiError';
 
 const MAX_SLOTS = 5;
 const CATEGORY_NAMES: Record<string, string> = { STRATEGIC: 'Strategic', PLANNING: 'Planning', REVIEW: 'Review', STATUS: 'Status update', OTHER: 'Other' };
-const isScheduled = (m: any) => ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'].includes(m.status);
+const isScheduled = (m: Pick<Meeting, 'status'>) => ['CONFIRMED', 'CALENDAR_SYNCHRONIZED', 'RESCHEDULED'].includes(m.status);
 // The AI assistant also helps after a meeting (e.g. writing the minutes).
-const canUseAI = (m: any) => isScheduled(m) || ['IN_PROGRESS', 'COMPLETED'].includes(m.status);
-const badgeOf = (m: any) => (isScheduled(m) ? { bg: 'success' } : ['COMPLETED', 'IN_PROGRESS'].includes(m.status) ? { bg: 'secondary' } : m.status === 'CANCELLED' ? { bg: 'danger' } : { bg: 'warning', text: 'dark' as const });
+const canUseAI = (m: Pick<Meeting, 'status'>) => isScheduled(m) || ['IN_PROGRESS', 'COMPLETED'].includes(m.status);
+const badgeOf = (m: Pick<Meeting, 'status'>) => (isScheduled(m) ? { bg: 'success' } : ['COMPLETED', 'IN_PROGRESS'].includes(m.status) ? { bg: 'secondary' } : m.status === 'CANCELLED' ? { bg: 'danger' } : { bg: 'warning', text: 'dark' as const });
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Voting',
   CONFIRMED: 'Confirmed',
@@ -53,21 +55,21 @@ const TimeWithZones = ({ iso, zones, strong = false }: { iso: string; zones: (st
 const emptyForm = { projectId: '', activityId: '', title: '', description: '', durationMin: 30, category: 'OTHER', video: 'auto' as VideoMode, videoUrl: '', isPrivate: false };
 
 const Meetings = () => {
-  const [meetings, setMeetings] = useState<any[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
   // Search and filters for the meeting history (done in the browser: the list only contains the user's own projects)
   const [search, setSearch] = useState({ text: '', projectId: '', when: 'all', category: '', from: '', to: '' });
-  const [pendingPolls, setPendingPolls] = useState<any[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
+  const [pendingPolls, setPendingPolls] = useState<PendingPoll[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [notice, setNotice] = useState<{ variant: string; text: string } | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
-  const [selectedPoll, setSelectedPoll] = useState<any>(null);
-  const [selectedMeetingToFinalize, setSelectedMeetingToFinalize] = useState<any>(null);
+  const [selectedPoll, setSelectedPoll] = useState<PendingPoll | null>(null);
+  const [selectedMeetingToFinalize, setSelectedMeetingToFinalize] = useState<Meeting | null>(null);
   const [finalSlot, setFinalSlot] = useState('');
   const [votes, setVotes] = useState<Record<string, string>>({});
-  const [videoMeeting, setVideoMeeting] = useState<any>(null);
-  const [todoMeeting, setTodoMeeting] = useState<any>(null);
+  const [videoMeeting, setVideoMeeting] = useState<Meeting | null>(null);
+  const [todoMeeting, setTodoMeeting] = useState<Meeting | null>(null);
 
   // AI State
   const [showAIModal, setShowAIModal] = useState(false);
@@ -75,8 +77,8 @@ const Meetings = () => {
   const [aiPrompt, setAiPrompt] = useState('');
   const [draftType, setDraftType] = useState('AGENDA');
   const [aiLanguage, setAiLanguage] = useState('en');
-  const [replyMeeting, setReplyMeeting] = useState<any>(null);
-  const [notesMeeting, setNotesMeeting] = useState<any>(null);
+  const [replyMeeting, setReplyMeeting] = useState<{ id: string; title: string } | null>(null);
+  const [notesMeeting, setNotesMeeting] = useState<Meeting | null>(null);
   const [agendaSaved, setAgendaSaved] = useState(false);
   const [generatedDraft, setGeneratedDraft] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -132,10 +134,10 @@ const Meetings = () => {
   }, [location]);
 
   const project = projects.find(p => p.id === formData.projectId);
-  const members: any[] = project?.members || [];
+  const members: ProjectMember[] = project?.members || [];
   // Everyone in the project is invited unless unticked; the organizer is always included by the server
   const invited = members.filter(m => !uninvited.includes(m.userId) || m.userId === user?.id);
-  const invitedIds = invited.map((m: any) => m.userId);
+  const invitedIds = invited.map(m => m.userId);
   const memberZones = members.map(m => m.user?.timeZone);
 
   const toggleSlot = (iso: string) =>
@@ -163,18 +165,19 @@ const Meetings = () => {
       setShowScheduleModal(false);
       setNotice({ variant: 'success', text: `Poll sent to ${Math.max(invited.length - 1, 0)} participant(s). The meeting is confirmed automatically when a majority votes "Yes" for a time.` });
       fetchData();
-    } catch (err: any) {
-      setFormError(err.response?.data?.error || 'Could not create the poll.');
+    } catch (err) {
+      setFormError(apiError(err, 'Could not create the poll.'));
     }
   };
 
-  const handleOpenVote = (poll: any) => {
+  const handleOpenVote = (poll: PendingPoll) => {
     setSelectedPoll(poll);
     setVotes({});
     setShowVoteModal(true);
   };
 
   const handleSubmitVote = async () => {
+    if (!selectedPoll) return;
     const voteArray = Object.keys(votes).map(slot => ({ selectedSlot: slot, availability: votes[slot] }));
     try {
       const res = await axios.post(`/api/meetings/poll/${selectedPoll.id}/vote`, { votes: voteArray });
@@ -183,25 +186,25 @@ const Meetings = () => {
         ? { variant: 'success', text: `A majority agreed: "${selectedPoll.meeting.title}" is confirmed for ${formatInZone(res.data.autoConfirmed.startDate, browserTimeZone())} and added to connected calendars.` }
         : { variant: 'info', text: 'Your votes were saved.' });
       fetchData();
-    } catch (err: any) {
-      setNotice({ variant: 'danger', text: err.response?.data?.error || 'Could not save your votes.' });
+    } catch (err) {
+      setNotice({ variant: 'danger', text: apiError(err, 'Could not save your votes.') });
     }
   };
 
-  const handleOpenFinalize = (meeting: any) => {
+  const handleOpenFinalize = (meeting: Meeting) => {
     setSelectedMeetingToFinalize(meeting);
     setFinalSlot('');
     setShowFinalizeModal(true);
   };
 
   const handleFinalize = async () => {
-    if (!finalSlot) return;
+    if (!finalSlot || !selectedMeetingToFinalize) return;
     try {
       await axios.post(`/api/meetings/${selectedMeetingToFinalize.id}/finalize`, { finalStartDate: finalSlot });
       setShowFinalizeModal(false);
       fetchData();
-    } catch (err: any) {
-      setNotice({ variant: 'danger', text: err.response?.data?.error || 'Could not confirm the meeting.' });
+    } catch (err) {
+      setNotice({ variant: 'danger', text: apiError(err, 'Could not confirm the meeting.') });
     }
   };
 
@@ -213,8 +216,8 @@ const Meetings = () => {
     try {
       const res = await axios.post('/api/ai/generate', { meetingId: selectedMeetingId, draftType, prompt: aiPrompt, language: aiLanguage });
       setGeneratedDraft(res.data.content);
-    } catch (err: any) {
-      setGeneratedDraft(err.response?.data?.error || 'Failed to generate content');
+    } catch (err) {
+      setGeneratedDraft(apiError(err, 'Failed to generate content'));
     } finally {
       setIsGenerating(false);
     }
@@ -228,7 +231,7 @@ const Meetings = () => {
   };
 
   // .ics file: works with any calendar app, also without connecting Google
-  const downloadIcs = async (meeting: any) => {
+  const downloadIcs = async (meeting: Meeting) => {
     try {
       const res = await axios.get(`/api/meetings/${meeting.id}/ics`, { responseType: 'blob' });
       const url = URL.createObjectURL(res.data);
@@ -249,25 +252,26 @@ const Meetings = () => {
   };
   const visibleMeetings = meetings.filter(m => {
     const now = Date.now();
-    const ended = m.status === 'COMPLETED' || (isScheduled(m) && new Date(m.endDate ?? m.startDate).getTime() < now);
+    const end = m.endDate ?? m.startDate;
+    const ended = m.status === 'COMPLETED' || (isScheduled(m) && !!end && new Date(end).getTime() < now);
     if (search.when === 'upcoming' && !(isScheduled(m) && !ended)) return false;
     if (search.when === 'voting' && m.status !== 'DRAFT') return false;
     if (search.when === 'past' && !ended) return false;
     if (search.projectId && m.project.id !== search.projectId) return false;
     if (search.category && m.category !== search.category) return false;
     if ((search.from || search.to) && !m.startDate) return false; // undecided polls have no date
-    if (search.from && dayKey(m.startDate) < search.from) return false;
-    if (search.to && dayKey(m.startDate) > search.to) return false;
+    if (search.from && m.startDate && dayKey(m.startDate) < search.from) return false;
+    if (search.to && m.startDate && dayKey(m.startDate) > search.to) return false;
     const text = search.text.trim().toLowerCase();
     if (text) {
-      const haystack = [m.title, m.description, m.project.name, ...(m.participants || []).map((p: any) => `${p.user?.firstName} ${p.user?.lastName}`)]
+      const haystack = [m.title, m.description, m.project.name, ...(m.participants || []).map(p => `${p.user?.firstName} ${p.user?.lastName}`)]
         .filter(Boolean).join(' ').toLowerCase();
       if (!text.split(/\s+/).every(word => haystack.includes(word))) return false;
     }
     return true;
   });
 
-  const zonesOf = (meeting: any) => (meeting.participants || []).map((p: any) => p.user?.timeZone);
+  const zonesOf = (meeting: Meeting) => (meeting.participants || []).map(p => p.user?.timeZone);
 
   return (
     <Container fluid>
@@ -493,8 +497,8 @@ const Meetings = () => {
                         try {
                           await axios.put(`/api/meetings/${selectedMeetingId}/agenda`, { agenda: generatedDraft });
                           setAgendaSaved(true);
-                        } catch (err: any) {
-                          setGeneratedDraft(generatedDraft + '\n\n> ' + (err.response?.data?.error || 'Could not save the agenda.'));
+                        } catch (err) {
+                          setGeneratedDraft(generatedDraft + '\n\n> ' + (apiError(err, 'Could not save the agenda.')));
                         }
                       }}>
                       <i className={`bi ${agendaSaved ? 'bi-check2' : 'bi-journal-check'} me-1`} aria-hidden="true"></i>{agendaSaved ? 'Saved as agenda' : 'Use as agenda'}
@@ -522,7 +526,7 @@ const Meetings = () => {
             <p className="text-muted small">
               Votes so far for <strong>{selectedMeetingToFinalize.title}</strong> ({selectedMeetingToFinalize.poll.voted} of {selectedMeetingToFinalize.participants.length} people voted).
             </p>
-            {selectedMeetingToFinalize.poll.tallies.map((t: any, idx: number) => (
+            {selectedMeetingToFinalize.poll.tallies.map((t, idx) => (
               <div key={t.start} className="mb-2 p-3 rounded border d-flex justify-content-between align-items-center" onClick={() => setFinalSlot(t.start)} style={{ cursor: 'pointer' }}>
                 <Form.Check
                   type="radio"
@@ -567,12 +571,12 @@ const Meetings = () => {
                 </Form.Group>
               </Col>
               <Col md={6}>
-                {project?.activities?.length > 0 && (
+                {project && project.activities.length > 0 && (
                   <Form.Group className="mb-3" controlId="sched-activity">
                     <Form.Label className="fw-semibold text-muted small text-uppercase">Activity (Optional)</Form.Label>
                     <Form.Select value={formData.activityId} onChange={e => setFormData({ ...formData, activityId: e.target.value })} className="shadow-none">
                       <option value="">None</option>
-                      {project.activities.map((act: any) => <option key={act.id} value={act.id}>{act.title}</option>)}
+                      {project.activities.map(act => <option key={act.id} value={act.id}>{act.title}</option>)}
                     </Form.Select>
                   </Form.Group>
                 )}
@@ -611,7 +615,7 @@ const Meetings = () => {
               <fieldset className="mb-3">
                 <legend className="fw-semibold text-muted small text-uppercase mb-2" style={{ fontSize: '0.875rem' }}>Participants ({invited.length})</legend>
                 <div className="d-flex flex-wrap gap-3">
-                  {members.map((m: any) => (
+                  {members.map(m => (
                     <Form.Check key={m.userId} type="checkbox" id={`inv-${m.userId}`}
                       label={`${m.user?.firstName} ${m.user?.lastName}${m.userId === user?.id ? ' (you, organizer)' : ''}`}
                       checked={m.userId === user?.id || !uninvited.includes(m.userId)} disabled={m.userId === user?.id}
@@ -669,6 +673,7 @@ const Meetings = () => {
       <MeetingNotesModal meeting={notesMeeting} onHide={() => setNotesMeeting(null)}
         onWriteMinutes={notesText => {
           const m = notesMeeting;
+          if (!m) return;
           setNotesMeeting(null);
           openAIModal(m.id);
           setDraftType('SUMMARY');
@@ -700,7 +705,7 @@ const Meetings = () => {
               <div key={slot} className="mb-3 p-3 border rounded shadow-sm">
                 <div className="mb-3 d-flex align-items-start">
                   <i className="bi bi-calendar-event text-primary me-2 mt-1" aria-hidden="true"></i>
-                  <TimeWithZones iso={slot} zones={(selectedPoll.meeting.participants || []).map((p: any) => p.user?.timeZone)} strong />
+                  <TimeWithZones iso={slot} zones={(selectedPoll.meeting.participants || []).map(p => p.user?.timeZone)} strong />
                 </div>
                 <ToggleButtonGroup type="radio" name={`vote-${idx}`} className="w-100 d-flex" value={votes[slot]} onChange={(val) => setVotes({ ...votes, [slot]: val })}>
                   <ToggleButton id={`yes-${idx}`} value="YES" variant={votes[slot] === 'YES' ? 'success' : 'outline-success'} className="flex-fill fw-semibold">Yes</ToggleButton>

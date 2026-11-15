@@ -6,6 +6,7 @@ import axios from 'axios';
 import { Link } from 'react-router-dom';
 import TwoFactorSetup, { RecoveryCodes } from '../components/security/TwoFactorSetup';
 import { allTimeZones, browserTimeZone } from '../lib/time';
+import { apiError } from '../lib/apiError';
 
 interface Me {
   email: string;
@@ -38,8 +39,8 @@ const IdCodeEditor = ({ current, onSaved }: { current: string | null; onSaved: (
       setEditing(false);
       setError('');
       onSaved();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not save.');
+    } catch (err) {
+      setError(apiError(err, 'Could not save.'));
     }
   };
   if (!editing) {
@@ -76,8 +77,8 @@ const WorkingHoursCard = ({ me, onSaved }: { me: Me; onSaved: () => void }) => {
       await axios.put('/api/users/me/preferences', { timeZone: tz, workdayStart: start, workdayEnd: end });
       setMsg({ ok: true, text: 'Saved.' });
       onSaved();
-    } catch (err: any) {
-      setMsg({ ok: false, text: err.response?.data?.error || 'Could not save.' });
+    } catch (err) {
+      setMsg({ ok: false, text: apiError(err, 'Could not save.') });
     }
   };
 
@@ -182,8 +183,8 @@ const Profile = () => {
       setMe(meRes.data);
       setSessions(sessionsRes.data);
       setActivity(activityRes.data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Could not load your settings.');
+    } catch (err) {
+      setError(apiError(err, 'Could not load your settings.'));
     }
   }, []);
 
@@ -211,8 +212,8 @@ const Profile = () => {
       }
       setCodeDialog(null);
       load();
-    } catch (err: any) {
-      setDialogError(err.response?.data?.error || 'That did not work. Please try again.');
+    } catch (err) {
+      setDialogError(apiError(err, 'That did not work. Please try again.'));
     }
   };
 

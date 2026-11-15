@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Form, Button, Card, Alert, InputGroup, Spinner } from 'react-bootstrap';
 import AuthShell from '../components/auth/AuthShell';
+import { apiError } from '../lib/apiError';
 import { Link, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { usePasswordPolicy, describePolicy, checkPassword } from '../lib/passwordPolicy';
@@ -23,7 +24,7 @@ const AuthCard = ({ title, children }: { title: string; children: ReactNode }) =
   </AuthShell>
 );
 
-const errorOf = (err: any, fallback: string) => err?.response?.data?.error || fallback;
+const errorOf = apiError;
 
 export const ForgotPassword = () => {
   const [email, setEmail] = useState('');

@@ -7,6 +7,7 @@ import 'react-phone-number-input/style.css';
 import PhoneInput from 'react-phone-number-input';
 import { browserTimeZone } from '../lib/time';
 import { usePasswordPolicy, describePolicy, checkPassword } from '../lib/passwordPolicy';
+import { apiError } from '../lib/apiError';
 
 const Register = () => {
   const [firstName, setFirstName] = useState('');
@@ -64,8 +65,8 @@ const Register = () => {
         firstName, lastName, email, phone, idCode, password, gdprConsent, timeZone: browserTimeZone()
       });
       setSuccess(res.data.message);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Registration failed. Please try again.');
+    } catch (err) {
+      setError(apiError(err, 'Registration failed. Please try again.'));
     } finally {
       setLoading(false);
     }

@@ -38,7 +38,8 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
     });
 
     res.json(
-      meetings.map(({ polls, actionItems, ...m }) => ({
+      // The agenda is not part of the list (it is encrypted and loaded with the "Agenda & notes" dialog)
+      meetings.map(({ polls, actionItems, agenda: _agenda, ...m }) => ({
         ...m,
         todos: { total: actionItems.length, done: actionItems.filter(a => a.doneAt).length },
         poll: {
@@ -138,7 +139,7 @@ router.get('/polls/pending', authenticate, async (req: AuthRequest, res) => {
     });
 
     res.json(
-      pendingMeetings.map(m => ({
+      pendingMeetings.map(({ agenda: _agenda, ...m }) => ({
         id: m.id,
         meeting: m,
         options: m.polls.map(p => p.startTime.toISOString()),

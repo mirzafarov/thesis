@@ -5,6 +5,7 @@
 import crypto from 'node:crypto';
 import { google } from 'googleapis';
 import { getGoogleClientForUser } from './google';
+import { errorMessage } from './errors';
 
 export const VIDEO_MODES = ['auto', 'jitsi', 'custom', 'none'] as const;
 export type VideoMode = (typeof VIDEO_MODES)[number];
@@ -62,8 +63,8 @@ export async function createGoogleMeetEvent(organizerId: string, event: { title:
     });
     const link = res.data.hangoutLink || res.data.conferenceData?.entryPoints?.find(e => e.entryPointType === 'video')?.uri;
     return link && validCustomUrl(link) ? link : null;
-  } catch (err: any) {
-    console.error('Could not create a Google Meet link:', err?.message || err);
+  } catch (err) {
+    console.error('Could not create a Google Meet link:', errorMessage(err));
     return null;
   }
 }

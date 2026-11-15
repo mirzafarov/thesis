@@ -37,13 +37,20 @@ async function validMembers(projectId: string, ids: unknown) {
   return members.map(m => m.userId);
 }
 
-const groupView = (g: any, myId: string) => ({
+/** What the API sends about a group (members as plain names, message count). */
+interface GroupWithMembers {
+  id: string; name: string; alias: string; createdAt: Date;
+  members: { userId: string; user: { id: string; firstName: string; lastName: string } }[];
+  _count?: { messages: number };
+}
+
+const groupView = (g: GroupWithMembers, myId: string) => ({
   id: g.id,
   name: g.name,
   alias: g.alias,
   createdAt: g.createdAt,
-  members: g.members.map((m: any) => ({ id: m.user.id, firstName: m.user.firstName, lastName: m.user.lastName })),
-  isMember: g.members.some((m: any) => m.userId === myId),
+  members: g.members.map(m => ({ id: m.user.id, firstName: m.user.firstName, lastName: m.user.lastName })),
+  isMember: g.members.some(m => m.userId === myId),
   messages: g._count?.messages ?? 0,
 });
 
