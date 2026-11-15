@@ -10,7 +10,7 @@ import './landing.css';
 /** Who is responsible for the data (the "controller"). Add a contact email before real use. */
 const CONTROLLER = {
   name: 'Safe Zone, a Bachelor’s thesis project at Vilnius University, Kaunas Faculty',
-  email: '', // e.g. 'privacy@your-domain.lt'
+  email: 'mirzafarovt@gmail.com',
 };
 
 const DATA = [
