@@ -32,3 +32,6 @@ backend/tests/e2e/last-run.txt
 
 # Local settings of the Claude app (starting the dev servers); not part of the project
 .claude/
+
+# Thesis report drafts (kept out of the code repository)
+/report/
