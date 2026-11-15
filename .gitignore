@@ -29,3 +29,6 @@ backend/mail-outbox/
 
 # Result of the last end-to-end test run
 backend/tests/e2e/last-run.txt
+
+# Local settings of the Claude app (starting the dev servers); not part of the project
+.claude/
