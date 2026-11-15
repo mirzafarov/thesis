@@ -19,7 +19,15 @@ const app = express();
 const port = process.env.PORT || 5001;
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: FRONTEND_URL }));
+// Which website addresses may call the API. Always the configured FRONTEND_URL; during development also any
+// address on this computer (localhost / 127.0.0.1 / [::1], any port), e.g. when Vite picks another port.
+const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+app.use(cors({
+  origin: (origin, callback) => {
+    const allowed = !origin || origin === FRONTEND_URL || (process.env.NODE_ENV !== 'production' && LOCAL_ORIGIN.test(origin));
+    callback(null, allowed);
+  },
+}));
 app.use(express.json());
 
 // Routes
