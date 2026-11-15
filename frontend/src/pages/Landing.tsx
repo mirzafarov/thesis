@@ -205,6 +205,7 @@ const Landing = () => {
         <div className="lp-container lp-footer-inner">
           <span className="lp-logo lp-logo-sm"><BrandLogo size={32} /></span>
           <span className="lp-muted lp-small">Project meeting scheduling and management platform · Bachelor’s thesis, Vilnius University, 2026</span>
+          <Link to="/cookies" className="lp-small">Cookie policy</Link>
         </div>
       </footer>
     </div>

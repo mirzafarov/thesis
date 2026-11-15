@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/* The Inter font is loaded from Google Fonts only after cookie consent (see lib/consent.ts);
+   otherwise the computer's own font is used. */
 
 :root, [data-theme="light"] {
   --page-bg: #F8FAFC;
@@ -42,7 +43,7 @@
 }
 
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background-color: var(--page-bg) !important;
   color: var(--text-primary) !important;
   transition: background-color 0.3s ease, color 0.3s ease;

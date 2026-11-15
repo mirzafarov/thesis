@@ -3,6 +3,7 @@ import { Container, Card, Button, Modal, Badge, Table, Form, Alert, Row, Col } f
 import { START_TOUR_EVENT } from '../components/OnboardingTour';
 import { AuthContext } from '../context/AuthContext';
 import axios from 'axios';
+import { Link } from 'react-router-dom';
 import TwoFactorSetup, { RecoveryCodes } from '../components/security/TwoFactorSetup';
 import { allTimeZones, browserTimeZone } from '../lib/time';
 
@@ -358,6 +359,9 @@ const Profile = () => {
                 <Button className="saas-btn-outline-primary" onClick={handleExportData}><i className="bi bi-download me-2" aria-hidden="true"></i>Export My Data (JSON)</Button>
                 <Button className="saas-btn-outline-danger" onClick={() => setShowDeleteModal(true)}><i className="bi bi-trash me-2" aria-hidden="true"></i>Delete Account</Button>
               </div>
+              <p className="small mt-3 mb-0" style={{ color: 'var(--text-secondary)' }}>
+                <i className="bi bi-cookie me-1" aria-hidden="true"></i>What this site stores in your browser, and your choice about Google Fonts: <Link to="/cookies">Cookie policy & settings</Link>
+              </p>
             </Card.Body>
           </Card>
 

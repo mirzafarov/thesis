@@ -6,6 +6,10 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import './index.css';
 import axios from 'axios';
+import { applyConsent } from './lib/consent';
+
+// Load optional external content (Google font) only if the visitor allowed it
+applyConsent();
 
 // All API calls use paths like '/api/projects'; the server address is set once here.
 // Override it with VITE_API_URL in frontend/.env (e.g. for a deployed backend).

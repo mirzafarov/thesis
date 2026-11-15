@@ -196,3 +196,9 @@
   .lp-nav, .lp-nav-inner { transition: none !important; }
   .lp-card:hover { transform: none; }
 }
+
+/* Cookie policy tables */
+.sz-policy-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; background: var(--surface); }
+.sz-policy-table th, .sz-policy-table td { text-align: left; vertical-align: top; padding: 10px 12px; border: 1px solid var(--border); }
+.sz-policy-table th { color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.sz-policy-table code { color: var(--primary); white-space: nowrap; }

@@ -1,0 +1,24 @@
+/* Cookie notice: fixed to the bottom, same dark navy and blue as the app's sidebar, readable on every page */
+.sz-cookie {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1090; /* above page content, below Bootstrap toasts */
+  background: #0F172A; color: #E2E8F0;
+  border-top: 1px solid #1E293B; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
+  padding: 14px 16px;
+}
+.sz-cookie-inner { max-width: 1120px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+.sz-cookie-text { flex: 1 1 420px; margin: 0; font-size: 0.9rem; line-height: 1.5; }
+.sz-cookie-text strong { color: #FFFFFF; }
+.sz-cookie-text a { color: #93C5FD; font-weight: 600; text-decoration: underline; }
+.sz-cookie-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.sz-cookie-btn {
+  min-height: 44px; padding: 0 18px; border-radius: 10px; font-weight: 600; font-size: 0.9rem; cursor: pointer;
+  border: 1px solid transparent; transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+/* Both choices are equally easy to see and click (no "dark pattern") */
+.sz-cookie-btn-primary { background: #2563EB; color: #FFFFFF; }
+.sz-cookie-btn-primary:hover { background: #1D4ED8; }
+.sz-cookie-btn-ghost { background: transparent; color: #FFFFFF; border-color: #475569; }
+.sz-cookie-btn-ghost:hover { border-color: #94A3B8; background: rgba(255, 255, 255, 0.06); }
+.sz-cookie-btn:focus-visible, .sz-cookie-text a:focus-visible { outline: 3px solid #60A5FA; outline-offset: 2px; }
+@media (max-width: 575.98px) { .sz-cookie-actions { width: 100%; } .sz-cookie-btn { flex: 1; } }
+@media (prefers-reduced-motion: reduce) { .sz-cookie-btn { transition: none; } }

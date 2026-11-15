@@ -17,6 +17,8 @@ import { ForgotPassword, ResetPassword, VerifyEmail } from './pages/AuthPages';
 import SetupTwoFactor from './pages/SetupTwoFactor';
 import { AuthContext, AuthProvider } from './context/AuthContext';
 import Landing from './pages/Landing';
+import CookiePolicy from './pages/CookiePolicy';
+import CookieBanner from './components/CookieBanner';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useEffect, useContext } from 'react';
 
@@ -36,8 +38,11 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        {/* Shown until the visitor chooses; the choice can be changed on /cookies */}
+        <CookieBanner />
         <Routes>
           <Route path="/home" element={<Landing />} />
+          <Route path="/cookies" element={<CookiePolicy />} />
           {/* The former 3D welcome page was removed; old links open the landing page */}
           <Route path="/welcome" element={<Navigate to="/home" replace />} />
           <Route path="/login" element={<Login />} />
