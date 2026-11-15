@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import BrandLogo from './BrandLogo';
 import OnboardingTour from './OnboardingTour';
+import PolicyConsent from './PolicyConsent';
 import { Offcanvas, Button } from 'react-bootstrap';
 
 const Layout = () => {
@@ -47,6 +48,8 @@ const Layout = () => {
 
       {/* First-login tour (shown once per account, can be reopened in Settings) */}
       <OnboardingTour />
+      {/* Asks to accept the privacy policy again after its version changed */}
+      <PolicyConsent />
     </div>
   );
 };

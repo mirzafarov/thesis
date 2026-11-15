@@ -16,7 +16,11 @@ export default function AuthShell({ children }: { children: ReactNode }) {
           <span>Safe <b>Zone</b></span>
         </Link>
         {children}
-        <p className="text-center small mt-3 mb-0"><Link to="/cookies" style={{ color: '#93C5FD' }}>Cookie policy</Link></p>
+        <p className="text-center small mt-3 mb-0">
+          <Link to="/privacy" style={{ color: '#93C5FD' }}>Privacy policy</Link>
+          <span aria-hidden="true" style={{ color: '#64748B' }}> · </span>
+          <Link to="/cookies" style={{ color: '#93C5FD' }}>Cookie policy</Link>
+        </p>
       </div>
     </div>
   );

@@ -158,7 +158,7 @@ const Register = () => {
               <Form.Group id="gdpr" className="mb-4">
                 <Form.Check 
                   type="checkbox" 
-                  label="I agree to the Privacy Policy and GDPR data processing rules." 
+                  label={<>I agree to the <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy<span className="visually-hidden"> (opens in a new tab)</span></a> and GDPR data processing rules.</>}
                   checked={gdprConsent}
                   onChange={(e) => setGdprConsent(e.target.checked)}
                 />

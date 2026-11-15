@@ -360,7 +360,7 @@ const Profile = () => {
                 <Button className="saas-btn-outline-danger" onClick={() => setShowDeleteModal(true)}><i className="bi bi-trash me-2" aria-hidden="true"></i>Delete Account</Button>
               </div>
               <p className="small mt-3 mb-0" style={{ color: 'var(--text-secondary)' }}>
-                <i className="bi bi-cookie me-1" aria-hidden="true"></i>What this site stores in your browser, and your choice about Google Fonts: <Link to="/cookies">Cookie policy & settings</Link>
+                <i className="bi bi-cookie me-1" aria-hidden="true"></i>How your data is used and protected: <Link to="/privacy">Privacy policy</Link>. What this site stores in your browser, and your choice about Google Fonts: <Link to="/cookies">Cookie policy & settings</Link>
               </p>
             </Card.Body>
           </Card>

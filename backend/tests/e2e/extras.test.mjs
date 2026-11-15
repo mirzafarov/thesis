@@ -49,6 +49,22 @@ try {
   const idAudit = await prisma.auditLog.findMany({ where: { userId: id.E, action: 'PROFILE_UPDATED' } });
   check('ID code changes are logged without the code itself', idAudit.length === 2 && idAudit.every(a => !a.details.includes('AB-1234')));
 
+  // ---- Privacy policy version and re-consent ----
+  const pv = await call('GET', '/api/auth/privacy-version', null);
+  check('policy version is public', pv.status === 200 && typeof pv.data.version === 'string');
+  me = await call('GET', '/api/auth/me', tok.E);
+  check('new account has consented to the current version', me.data.consentVersion === pv.data.version && me.data.currentPolicyVersion === pv.data.version);
+  await prisma.systemSetting.upsert({ where: { key: 'privacyPolicyVersion' }, create: { key: 'privacyPolicyVersion', value: '9.9-test' }, update: { value: '9.9-test' } });
+  await new Promise(r => setTimeout(r, 5500)); // settings are cached for 5 seconds
+  me = await call('GET', '/api/auth/me', tok.E);
+  check('after a policy change the account needs to consent again', me.data.currentPolicyVersion === '9.9-test' && me.data.consentVersion !== '9.9-test');
+  check('consent to an outdated version is refused', (await call('POST', '/api/auth/me/consent', tok.E, { version: pv.data.version })).status === 409);
+  const cons = await call('POST', '/api/auth/me/consent', tok.E, { version: '9.9-test' });
+  check('consent to the new version is recorded with time and version', cons.status === 200 && cons.data.consentVersion === '9.9-test' && !!cons.data.consentAt);
+  check('consent is in the audit log', !!(await prisma.auditLog.findFirst({ where: { userId: id.E, action: 'CONSENT_GIVEN', details: { contains: '9.9-test' } } })));
+  check('consent needs a login', (await call('POST', '/api/auth/me/consent', null, { version: '9.9-test' })).status === 401);
+  await prisma.systemSetting.delete({ where: { key: 'privacyPolicyVersion' } }); // run-all restores the real settings afterwards too
+
   // ---- Project with an activity, a meeting linked to it and to-dos ----
   const pid = (await call('POST', '/api/projects', tok.M, { name: `Extras ${tag}` })).data.id;
   await call('POST', `/api/projects/${pid}/members`, tok.M, { newMemberUserId: id.E, role: 'EMPLOYEE' });

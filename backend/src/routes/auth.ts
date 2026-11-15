@@ -108,6 +108,32 @@ router.get('/password-policy', async (_req, res) => {
   res.json(await passwordPolicy());
 });
 
+// Current privacy policy version (public): shown on the policy page and recorded with every consent
+router.get('/privacy-version', async (_req, res) => {
+  res.json({ version: (await getSettings()).privacyPolicyVersion });
+});
+
+// Accept the current privacy policy (asked again after the administrator raises its version).
+// The exact time and version are recorded, as at registration.
+router.post('/me/consent', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { privacyPolicyVersion } = await getSettings();
+    if (req.body.version !== privacyPolicyVersion) {
+      return res.status(409).json({ error: 'The privacy policy has changed again. Please reload the page and read the current version.' });
+    }
+    const user = await prisma.user.update({
+      where: { id: req.user.userId },
+      data: { consentAt: new Date(), consentVersion: privacyPolicyVersion },
+      select: { consentAt: true, consentVersion: true },
+    });
+    await audit(req, { userId: req.user.userId, action: 'CONSENT_GIVEN', details: `Accepted privacy policy version ${privacyPolicyVersion}.` });
+    res.json(user);
+  } catch (error) {
+    console.error('Consent error:', error);
+    res.status(500).json({ error: 'Failed to save your consent' });
+  }
+});
+
 // ---------- Registration and email confirmation ----------
 
 router.post('/register', [
@@ -378,6 +404,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
       idCode: readIdCode(user.idCodeEncrypted),
       consentAt: user.consentAt,
       consentVersion: user.consentVersion,
+      currentPolicyVersion: (await getSettings()).privacyPolicyVersion,
       twoFactorEnabled: !!user.totpEnabledAt,
       twoFactorRequired: await isTwoFactorRequired(user.id, user.systemRole),
       recoveryCodesLeft: user.totpEnabledAt ? await remainingRecoveryCodes(user.id) : 0,

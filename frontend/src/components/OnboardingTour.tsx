@@ -6,6 +6,7 @@ import { Button, Modal } from 'react-bootstrap';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { LogoMark } from './BrandLogo';
+import { POLICY_ACCEPTED_EVENT } from './PolicyConsent';
 import './onboarding.css';
 
 /** Other pages open the tour with: window.dispatchEvent(new Event(START_TOUR_EVENT)) */
@@ -31,10 +32,16 @@ export default function OnboardingTour() {
   useEffect(() => {
     if (!user || user.role === 'ADMIN') return;
     let cancelled = false;
-    axios.get('/api/auth/me')
-      .then(res => { if (!cancelled && !res.data.onboardedAt) { setStep(0); setOpen(true); } })
+    const check = () => axios.get('/api/auth/me')
+      .then(res => {
+        // Wait while the privacy policy still has to be accepted (PolicyConsent shows that first)
+        const policyOk = res.data.consentVersion === res.data.currentPolicyVersion;
+        if (!cancelled && policyOk && !res.data.onboardedAt) { setStep(0); setOpen(true); }
+      })
       .catch(() => { /* not important enough to show an error */ });
-    return () => { cancelled = true; };
+    check();
+    window.addEventListener(POLICY_ACCEPTED_EVENT, check);
+    return () => { cancelled = true; window.removeEventListener(POLICY_ACCEPTED_EVENT, check); };
   }, [user]);
 
   // Reopened from Settings
